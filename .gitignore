@@ -1,0 +1,19 @@
+/.env
+/result
+/result-*
+.go
+
+# Binaries for programs and plugins
+*.exe
+*.exei~
+*.dll
+*.so
+*.dylib
+scritti
+.vscode/
+# Test binary, build with `go test -c`
+*.test
+vendor
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
