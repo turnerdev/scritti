@@ -7,7 +7,7 @@ rec {
     name = application.name;
     contents = application;
     config = {
-      Cmd = [ "/bin/Golang-Demo" ];
+      Cmd = [ "/bin/scritti" ];
     };
   };
 }

@@ -3,7 +3,7 @@
 }:
 
 buildGoModule {
-  pname = "golang-demo";
+  pname = "scritti";
   version = "0.0.1";
   src = nix-gitignore.gitignoreSource [] ./.;
   goPackagePath = "scritti";
