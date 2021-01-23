@@ -2,14 +2,25 @@ package core
 
 import (
 	"bufio"
+	"fmt"
 	"strings"
 )
+
+// TreeNode TODO
+type TreeNode interface {
+	Append() *TreeNode
+}
 
 // Component tree
 type Component struct {
 	name     string
 	parent   *Component
 	children []*Component
+}
+
+// GetName of component
+func (component *Component) GetName() string {
+	return component.name
 }
 
 // Append a child to a component
@@ -19,9 +30,9 @@ func (component *Component) Append(name string) *Component {
 	return &child
 }
 
-// readLine accepts a string and returns the count of leading
+// parseLine accepts a string and returns the count of leading
 // white space characters and the trimmed input
-func readLine(line string) (int, string) {
+func parseLine(line string) (int, string) {
 	trimmed := strings.TrimSpace(line)
 	return strings.Index(line, trimmed), trimmed
 }
@@ -39,7 +50,7 @@ func ParseComponent(body string) *Component {
 
 	for i := range lines {
 		var component *Component
-		indent, value := readLine(lines[i])
+		indent, value := parseLine(lines[i])
 
 		if len(components) > 0 {
 			previous := components[len(components)-1]
@@ -62,4 +73,13 @@ func ParseComponent(body string) *Component {
 	return components[0]
 }
 
-// func RenderComponent
+// RenderComponent generate HTML from a Component
+func RenderComponent(component *Component) string {
+	builder := strings.Builder{}
+	builder.WriteString(fmt.Sprintf("<div name=%q>", component.name))
+	for i := range component.children {
+		builder.WriteString(RenderComponent(component.children[i]))
+	}
+	builder.WriteString("</div>")
+	return builder.String()
+}

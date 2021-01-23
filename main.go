@@ -1,14 +1,9 @@
 package main
 
 import (
-	filerepository "scritti/filerepository"
+	server "scritti/server"
 )
 
-// Hello test
-func Hello(name string) string {
-	return "Hello, " + name
-}
-
 func main() {
-	filerepository.ReadFile()
+	server.Server(9090)
 }

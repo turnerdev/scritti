@@ -10,7 +10,7 @@
 *.so
 *.dylib
 scritti
-.vscode/
+
 # Test binary, build with `go test -c`
 *.test
 vendor
@@ -19,3 +19,5 @@ vendor
 *.out
 __debug_bin
 design.md
+*.code-workspace
+.vscode
