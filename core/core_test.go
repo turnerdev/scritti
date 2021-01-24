@@ -1,6 +1,8 @@
 package core
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestComponent(t *testing.T) {
 
@@ -51,4 +53,37 @@ func TestParseComponent(t *testing.T) {
 			t.Errorf("Expected no great-grandchild")
 		}
 	})
+}
+
+func TestCompileComponent(t *testing.T) {
+
+	componentName := "root"
+
+	fakeFileSystem := StubFS{
+		map[string]StubFile{
+			"test": {componentName},
+			// "style/example": {}
+		},
+	}
+
+	fileStore := FileStore{
+		"",
+		fakeFileSystem,
+		map[AssetType]map[string]string{
+			ComponentType: {},
+			StyleType:     {},
+		},
+	}
+
+	t.Run("Compile simple component", func(t *testing.T) {
+		asset, _ := fileStore.Get(ComponentType, "test")
+
+		component := asset.(*Component)
+		CompileComponent(component, fileStore)
+
+		if component.style == nil {
+			t.Errorf("Expected %q, got %q", componentName, component.name)
+		}
+	})
+
 }

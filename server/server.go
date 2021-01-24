@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"scritti/store"
+	core "scritti/core"
 )
 
 // Server initiates a web server on the given port
@@ -12,7 +12,7 @@ func Server(port int) {
 	mux := http.NewServeMux()
 
 	server := ComponentServer{
-		store.NewFileStore(),
+		core.NewFileStore("sampledata"),
 	}
 
 	mux.HandleFunc("/", server.ServeHTTP)

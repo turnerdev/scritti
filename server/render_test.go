@@ -7,16 +7,16 @@ import (
 	"testing"
 )
 
-type StubComponentStore struct {
+type StubAssetStore struct {
 	component *core.Component
 }
 
-func (s *StubComponentStore) Get(name string) (*core.Component, error) {
+func (s StubAssetStore) Get(assetType core.AssetType, name string) (core.Asset, error) {
 	return s.component, nil
 }
 
 func TestServer(t *testing.T) {
-	store := StubComponentStore{
+	store := StubAssetStore{
 		&core.Component{},
 	}
 	server := &ComponentServer{&store}

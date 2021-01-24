@@ -4,18 +4,23 @@ import (
 	"bufio"
 	"fmt"
 	"strings"
+	"sync"
 )
 
-// TreeNode TODO
-type TreeNode interface {
-	Append() *TreeNode
+type Asset interface{}
+
+// Style asset
+type Style struct {
+	name    string
+	classes []string
 }
 
-// Component tree
+// Component asset
 type Component struct {
 	name     string
 	parent   *Component
 	children []*Component
+	style    *Style
 }
 
 // GetName of component
@@ -25,7 +30,7 @@ func (component *Component) GetName() string {
 
 // Append a child to a component
 func (component *Component) Append(name string) *Component {
-	child := Component{name, component, nil}
+	child := Component{name: name, parent: component}
 	component.children = append(component.children, &child)
 	return &child
 }
@@ -35,6 +40,44 @@ func (component *Component) Append(name string) *Component {
 func parseLine(line string) (int, string) {
 	trimmed := strings.TrimSpace(line)
 	return strings.Index(line, trimmed), trimmed
+}
+
+// CompileComponent walks a component tree and loads dependencies
+func CompileComponent(component *Component, store AssetStore) {
+	var wg sync.WaitGroup
+	wg.Add(len(component.children))
+
+	for _, child := range component.children {
+		go func(component *Component) {
+			defer wg.Done()
+			CompileComponent(component, store)
+		}(child)
+	}
+
+	fmt.Printf("Compiling %q\n", component.name)
+	style, err := store.Get(StyleType, component.name)
+	fmt.Printf("Style %q\n", style)
+	if err != nil {
+		fmt.Printf("Error %q", err)
+	}
+	if style != nil {
+		component.style = style.(*Style)
+	}
+
+	wg.Wait()
+}
+
+// ParseStyle parses style source to a Style Asset
+func ParseStyle(body string) *Style {
+	var lines []string
+	sc := bufio.NewScanner(strings.NewReader(body))
+	for sc.Scan() {
+		lines = append(lines, sc.Text())
+	}
+	fmt.Printf("Parsing styles %q", body)
+	return &Style{
+		classes: lines,
+	}
 }
 
 // ParseComponent parses component source code to a component tree
@@ -76,7 +119,13 @@ func ParseComponent(body string) *Component {
 // RenderComponent generate HTML from a Component
 func RenderComponent(component *Component) string {
 	builder := strings.Builder{}
-	builder.WriteString(fmt.Sprintf("<div name=%q>", component.name))
+	var classes string
+
+	if component.style != nil {
+		classes = strings.Join(component.style.classes, " ")
+	}
+
+	builder.WriteString(fmt.Sprintf("<div name=%q class=%q>", component.name, classes))
 	for i := range component.children {
 		builder.WriteString(RenderComponent(component.children[i]))
 	}
