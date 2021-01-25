@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
+</head>
+
+<body>
+    {{.Body}}
+</body>
+
+<script>
+    var socket;
+    const socketMessageListener = (e) => {
+        const data = JSON.parse(e.data)
+        alert(e.data)
+        if (data.message === 'reload') {
+            window.location.reload()
+        }
+    };
+    const socketOpenListener = (e) => {
+        console.info('Connected to hot reload service');
+    };
+    const socketErrorListener = (e) => {
+        console.error(e);
+    }
+    const socketCloseListener = (e) => {
+        if (socket) {
+            console.info('Disconnected');
+        }
+        const url = window.origin.replace("http", "ws") + '/ws';
+        socket = new WebSocket(url);
+        socket.onopen = socketOpenListener;
+        socket.onmessage = socketMessageListener;
+        socket.onclose = socketCloseListener;
+        socket.onerror = socketErrorListener;
+    };
+    window.addEventListener('load', (event) => {
+        socketCloseListener();
+    });
+</script>
+
+</html>

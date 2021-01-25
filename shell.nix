@@ -6,10 +6,11 @@ let
 in
   drv.overrideAttrs (attrs: {
     src = null;
-    nativeBuildInputs = [ govers delve ] ++ attrs.nativeBuildInputs;
+    nativeBuildInputs = [ govers delve plantuml jre graphviz ] ++ attrs.nativeBuildInputs;
     shellHook = ''
       echo 'Entering ${attrs.pname}'
       set -v
+      export GRAPHVIZ_DOT=${graphviz}
       export GOPATH="$(pwd)/.go"
       export GOCACHE=""
       export CGO_ENABLED=0

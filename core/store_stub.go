@@ -48,3 +48,6 @@ func (fs StubFS) Open(name string) (File, error) { return fs.files[name], nil }
 func (StubFS) Stat(name string) (os.FileInfo, error) {
 	panic("not implemented") // TODO: Implement
 }
+
+func (StubFS) Watch(name string, ch chan<- bool) {
+}

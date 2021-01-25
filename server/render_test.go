@@ -15,11 +15,22 @@ func (s StubAssetStore) Get(assetType core.AssetType, name string) (core.Asset, 
 	return s.component, nil
 }
 
+func (s StubAssetStore) Watch(assetType core.AssetType, name string, ch chan<- bool) {
+
+}
+
+func (s StubAssetStore) Clear(assetType core.AssetType, name string) {
+
+}
+
 func TestServer(t *testing.T) {
 	store := StubAssetStore{
 		&core.Component{},
 	}
-	server := &ComponentServer{&store}
+	server := &ComponentServer{
+		reload: make(chan bool),
+		store:  &store,
+	}
 
 	t.Run("Test simple component rendering", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/", nil)
@@ -33,5 +44,4 @@ func TestServer(t *testing.T) {
 			t.Errorf("got %q", got)
 		}
 	})
-
 }

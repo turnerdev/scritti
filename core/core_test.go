@@ -67,9 +67,9 @@ func TestCompileComponent(t *testing.T) {
 	}
 
 	fileStore := FileStore{
-		"",
-		fakeFileSystem,
-		map[AssetType]map[string]string{
+		path: "",
+		fs:   fakeFileSystem,
+		cache: map[AssetType]map[string]string{
 			ComponentType: {},
 			StyleType:     {},
 		},

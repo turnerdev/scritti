@@ -11,10 +11,14 @@ import (
 func Server(port int) {
 	mux := http.NewServeMux()
 
+	ch := make(chan bool)
+
 	server := ComponentServer{
-		core.NewFileStore("sampledata"),
+		reload: ch,
+		store:  core.NewFileStore("sampledata"),
 	}
 
+	mux.HandleFunc("/ws", server.HandleHotReload)
 	mux.HandleFunc("/", server.ServeHTTP)
 
 	s := &http.Server{

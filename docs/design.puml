@@ -1,0 +1,26 @@
+@startuml
+interface Asset {}
+interface FileSystem {
+	Open(name string) (File, error)
+	Stat(name string) (os.FileInfo, error)
+	Watch(name string, ch chan<- bool)
+}
+class osFS {
+
+}
+class Component {
+	name     string
+	parent   *Component
+	children []*Component
+	style    *Style
+}
+class Style {
+	name    string
+	classes []string
+}
+
+FileSystem <|-- osFS
+Asset <|-- Component
+Asset <|-- Style
+
+@enduml

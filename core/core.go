@@ -54,9 +54,7 @@ func CompileComponent(component *Component, store AssetStore) {
 		}(child)
 	}
 
-	fmt.Printf("Compiling %q\n", component.name)
 	style, err := store.Get(StyleType, component.name)
-	fmt.Printf("Style %q\n", style)
 	if err != nil {
 		fmt.Printf("Error %q", err)
 	}
@@ -74,7 +72,6 @@ func ParseStyle(body string) *Style {
 	for sc.Scan() {
 		lines = append(lines, sc.Text())
 	}
-	fmt.Printf("Parsing styles %q", body)
 	return &Style{
 		classes: lines,
 	}
@@ -117,18 +114,19 @@ func ParseComponent(body string) *Component {
 }
 
 // RenderComponent generate HTML from a Component
-func RenderComponent(component *Component) string {
+func RenderComponent(component *Component, depth int) string {
 	builder := strings.Builder{}
 	var classes string
 
 	if component.style != nil {
 		classes = strings.Join(component.style.classes, " ")
 	}
-
-	builder.WriteString(fmt.Sprintf("<div name=%q class=%q>", component.name, classes))
+	builder.WriteString(strings.Repeat("\t", depth))
+	builder.WriteString(fmt.Sprintf("<div name=%q class=%q>\n", component.name, classes))
 	for i := range component.children {
-		builder.WriteString(RenderComponent(component.children[i]))
+		builder.WriteString(RenderComponent(component.children[i], depth+1))
 	}
-	builder.WriteString("</div>")
+	builder.WriteString(strings.Repeat("\t", depth))
+	builder.WriteString("</div>\n")
 	return builder.String()
 }
