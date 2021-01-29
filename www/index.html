@@ -15,8 +15,7 @@
     var socket;
     const socketMessageListener = (e) => {
         const data = JSON.parse(e.data)
-        alert(e.data)
-        if (data.message === 'reload') {
+        if (data.Message === 'reload') {
             window.location.reload()
         }
     };
@@ -34,7 +33,7 @@
         socket = new WebSocket(url);
         socket.onopen = socketOpenListener;
         socket.onmessage = socketMessageListener;
-        socket.onclose = socketCloseListener;
+        //socket.onclose = socketCloseListener;
         socket.onerror = socketErrorListener;
     };
     window.addEventListener('load', (event) => {
