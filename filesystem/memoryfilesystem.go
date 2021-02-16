@@ -49,19 +49,37 @@ type MemoryFileSystem struct {
 	files map[string]*MemoryFileEntry
 }
 
+func NewMemoryFileSystem() *MemoryFileSystem {
+	return &MemoryFileSystem{
+		make(map[string]*MemoryFileEntry),
+	}
+}
+
 func (fs MemoryFileSystem) Write(name string, data string) {
+	// Fetch entry from filesystem
 	entry, ok := fs.files[name]
 	if !ok {
+		// Create new entry if missing
 		fs.files[name] = &MemoryFileEntry{
 			sync.RWMutex{},
 			MemoryFile{data},
 			make(map[chan File]struct{}),
 		}
+		entry = fs.files[name]
+	} else {
+		// Update file content
+		entry.file.content = data
 	}
-	entry.mu.Lock()
-	defer entry.mu.Unlock()
-	entry.file.content = data
+
+	// Notify watchers
+	entry.mu.RLock()
+	for watcher := range fs.files[name].watchers {
+		watcher <- fs.files[name].file
+	}
+	entry.mu.RUnlock()
 }
+
+// Open a file
 func (fs MemoryFileSystem) Open(name string) (File, error) {
 	entry, ok := fs.files[name]
 	if !ok {
@@ -69,27 +87,34 @@ func (fs MemoryFileSystem) Open(name string) (File, error) {
 	}
 	return entry.file, nil
 }
+
+// Stat - Not implemented
 func (MemoryFileSystem) Stat(name string) (os.FileInfo, error) { panic("not implemented") }
-func (fs MemoryFileSystem) Watch(name string, done <-chan bool) <-chan File {
+
+// Watch a file for changes, returns a receiving channel for notifying of change events
+func (fs MemoryFileSystem) Watch(name string, done <-chan bool) (<-chan File, error) {
 	files := make(chan File)
 
 	entry, ok := fs.files[name]
 	if !ok {
-		panic("File not found")
+		return nil, errors.New("File not found")
 	}
 
+	entry.mu.Lock()
 	entry.watchers[files] = struct{}{}
+	entry.mu.Unlock()
 
 	go func() {
-		for {
-			select {
-			case <-done:
-				delete(entry.watchers, files)
-				close(files)
-				return
+		<-done
+		go func() {
+			for range files {
 			}
-		}
+		}()
+		entry.mu.Lock()
+		delete(entry.watchers, files)
+		entry.mu.Unlock()
+		close(files)
 	}()
 
-	return files
+	return files, nil
 }
