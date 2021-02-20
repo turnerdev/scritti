@@ -1,89 +1,89 @@
 package core
 
 import (
+	"strings"
 	"testing"
 )
 
-func TestComponent(t *testing.T) {
+func TestNewStyle(t *testing.T) {
+	t.Run("NewStyle - test basic tree parsing", func(t *testing.T) {
+		source := strings.Join([]string{
+			"class1",
+			"class2",
+			"class3",
+		}, "\n")
 
-	t.Run("Test component Append", func(t *testing.T) {
-		root := Component{name: "root"}
-		child1 := root.Append("child1")
-		child2 := root.Append("child2").Append("child2.1")
-
-		if len(root.children) != 2 {
-			t.Errorf("Expected 2 children, found %d", len(root.children))
+		style, err := NewStyle(source)
+		if err != nil {
+			t.Error(err)
 		}
-
-		if child1.parent != &root {
-			t.Error("Root parent incorrectly linked")
-		}
-
-		if child2 != root.children[1].children[0] || child2.parent.parent != &root {
-			t.Error("Grandchild incorrectly linked")
-		}
-
-	})
-
-}
-
-func TestParseComponent(t *testing.T) {
-	source := "root\n" +
-		"  child1\n" +
-		"    child1.1\n" +
-		"  child2\n"
-	result := ParseComponent(source)
-
-	if len(result.children) != 2 {
-		t.Errorf("Expected 2 children, found %d", len(result.children))
-	}
-
-	if result.name != "root" {
-		t.Errorf("Expected root, found %q", result.name)
-	}
-
-	t.Run("Test component depth", func(t *testing.T) {
-		if len(result.children[0].children) != 1 {
-			t.Errorf("Expected 1st child to have no children")
-		}
-		if len(result.children[1].children) != 0 {
-			t.Errorf("Expected 1st child to have no children")
-		}
-		if len(result.children[0].children[0].children) != 0 {
-			t.Errorf("Expected no great-grandchild")
+		if len(style.classes) != 3 {
+			t.Errorf("Found %d classes, expected 3", len(style.classes))
 		}
 	})
 }
 
-func TestCompileComponent(t *testing.T) {
+func TestNewComponent(t *testing.T) {
+	t.Run("NewComponent - test basic tree parsing", func(t *testing.T) {
+		source := strings.Join([]string{
+			"root",
+			"\tchild1",
+			"\t\tgrandchild1",
+			"\t\tgrandchild2",
+			"\t\tgrandchild3",
+			"\tchild2",
+		}, "\n")
 
-	componentName := "root"
+		component, err := NewComponent(source)
 
-	fakeFileSystem := StubFS{
-		map[string]StubFile{
-			"test": {componentName},
-			// "style/example": {}
-		},
-	}
+		if err != nil {
 
-	fileStore := FileStore{
-		path: "",
-		fs:   fakeFileSystem,
-		cache: map[AssetType]map[string]string{
-			ComponentType: {},
-			StyleType:     {},
-		},
-	}
+		}
+		if len(component.children) != 2 {
+			t.Errorf("Found %d children, expected 2", len(component.children))
+		}
+		if len(component.children[0].children) != 3 {
+			t.Errorf("Found %d grandchildren under child1, expected 3", len(component.children))
+		}
+		if len(component.children[1].children) != 0 {
+			t.Errorf("Found %d grandchildren under child2, expected 0", len(component.children))
+		}
+	})
+}
 
-	t.Run("Compile simple component", func(t *testing.T) {
-		asset, _ := fileStore.Get(ComponentType, "test")
+func TestDependencies(t *testing.T) {
 
-		component := asset.(*Component)
-		CompileComponent(component, fileStore)
+	t.Run("Test Component dependencies", func(t *testing.T) {
+		component, err := NewComponent("root\n\tchild\n\t\tgrandchild")
+		if err != nil {
+			t.Error(err)
+		}
+		want := [2]AssetKey{
+			{StyleType, "root"},
+			{StyleType, "child"},
+		}
+		var got [2]AssetKey
+		copy(got[:], getDependencyKeys(component))
 
-		if component.style == nil {
-			t.Errorf("Expected %q, got %q", componentName, component.name)
+		if want != got {
+			t.Errorf("got %q, want %q", got, want)
 		}
 	})
 
+	t.Run("Test Component dependencies", func(t *testing.T) {
+		component, err := NewComponent("root\n\tchild\n\t\tgrandchild")
+		if err != nil {
+			t.Error(err)
+		}
+		want := [2]AssetKey{
+			{StyleType, "child"},
+			{StyleType, "grandchild"},
+		}
+		var got [2]AssetKey
+		copy(got[:], getDependencyKeys(component.children[0]))
+
+		if want != got {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
 }

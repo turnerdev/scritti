@@ -2,131 +2,134 @@ package core
 
 import (
 	"bufio"
-	"fmt"
 	"strings"
-	"sync"
 )
 
+// Asset represents the common interface implemented by all Asset types
 type Asset interface{}
+
+type node struct {
+	id       int
+	parent   *node
+	children []*node
+}
 
 // Style asset
 type Style struct {
-	name    string
 	classes []string
+}
+
+// Element of a component
+type Element struct {
+	style    string
+	children []Element
 }
 
 // Component asset
 type Component struct {
-	name     string
-	parent   *Component
-	children []*Component
-	style    *Style
+	Element
 }
 
-// GetName of component
-func (component *Component) GetName() string {
-	return component.name
+// ComponentSourceLine represents a single line of a Component source
+type ComponentSourceLine struct {
+	indent int
+	style  string
 }
 
-// Append a child to a component
-func (component *Component) Append(name string) *Component {
-	child := Component{name: name, parent: component}
-	component.children = append(component.children, &child)
-	return &child
-}
-
-// parseLine accepts a string and returns the count of leading
-// white space characters and the trimmed input
-func parseLine(line string) (int, string) {
+func parseElement(line string) ComponentSourceLine {
 	trimmed := strings.TrimSpace(line)
-	return strings.Index(line, trimmed), trimmed
+	return ComponentSourceLine{
+		strings.Index(line, trimmed),
+		trimmed,
+	}
 }
 
-// CompileComponent walks a component tree and loads dependencies
-func CompileComponent(component *Component, store AssetStore) {
-	var wg sync.WaitGroup
-	wg.Add(len(component.children))
-
-	for _, child := range component.children {
-		go func(component *Component) {
-			defer wg.Done()
-			CompileComponent(component, store)
-		}(child)
+func getDependencyKeys(asset Asset) []AssetKey {
+	keys := []AssetKey{}
+	switch v := asset.(type) {
+	case Component:
+		keys = append(keys, AssetKey{StyleType, v.style})
+		for _, child := range v.children {
+			keys = append(keys, getDependencyKeys(child)...)
+		}
+	case Element:
+		keys = append(keys, AssetKey{StyleType, v.style})
+		for _, child := range v.children {
+			keys = append(keys, getDependencyKeys(child)...)
+		}
 	}
-
-	style, err := store.Get(StyleType, component.name)
-	if err != nil {
-		fmt.Printf("Error %q", err)
-	}
-	if style != nil {
-		component.style = style.(*Style)
-	}
-
-	wg.Wait()
+	return keys
 }
 
-// ParseStyle parses style source to a Style Asset
-func ParseStyle(body string) *Style {
+// NewAssetFactory generates a new Asset instance of the provided type
+func NewAssetFactory(assetType AssetType, source string) (Asset, error) {
+	switch assetType {
+	case ComponentType:
+		return NewComponent(source)
+	case StyleType:
+		return NewStyle(source)
+	}
+	panic("Not implemented")
+}
+
+// NewStyle constructs a new Style instance from provided source
+func NewStyle(source string) (Style, error) {
 	var lines []string
-	sc := bufio.NewScanner(strings.NewReader(body))
+	sc := bufio.NewScanner(strings.NewReader(source))
+	for sc.Scan() {
+		lines = append(lines, strings.TrimSpace(sc.Text()))
+	}
+	return Style{
+		lines,
+	}, nil
+}
+
+// NewComponent constructs a new Component instance from provided source
+func NewComponent(source string) (Component, error) {
+	var lines []string
+	sc := bufio.NewScanner(strings.NewReader(source))
 	for sc.Scan() {
 		lines = append(lines, sc.Text())
 	}
-	return &Style{
-		classes: lines,
-	}
-}
 
-// ParseComponent parses component source code to a component tree
-func ParseComponent(body string) *Component {
-	var lines []string
-	sc := bufio.NewScanner(strings.NewReader(body))
-	for sc.Scan() {
-		lines = append(lines, sc.Text())
-	}
+	// Parsed source lines
+	sourceLines := []ComponentSourceLine{}
 
-	var components []*Component
-	depth := map[*Component]int{}
+	// Tree structure for tracking source hierarchy, id = sourceLines index
+	ns := []*node{}
+	n := &node{id: 0}
 
-	for i := range lines {
-		var component *Component
-		indent, value := parseLine(lines[i])
+	for _, line := range lines {
+		sourceLine := parseElement(line)
 
-		if len(components) > 0 {
-			previous := components[len(components)-1]
+		if len(sourceLines) > 0 {
+			previous := len(ns) - 1
 			for {
-				if depth[previous] >= indent {
-					previous = previous.parent
+				if sourceLines[previous].indent >= sourceLine.indent {
+					previous--
 				} else {
 					break
 				}
 			}
-			component = previous.Append(value)
-		} else {
-			component = &Component{name: value}
+			n = &node{id: len(ns), children: []*node{}, parent: ns[previous]}
+			ns[previous].children = append(ns[previous].children, n)
 		}
 
-		depth[component] = indent
-		components = append(components, component)
+		sourceLines = append(sourceLines, sourceLine)
+		ns = append(ns, n)
 	}
 
-	return components[0]
-}
-
-// RenderComponent generate HTML from a Component
-func RenderComponent(component *Component, depth int) string {
-	builder := strings.Builder{}
-	var classes string
-
-	if component.style != nil {
-		classes = strings.Join(component.style.classes, " ")
+	var build func(*node) Element
+	build = func(n *node) Element {
+		element := Element{
+			style:    sourceLines[n.id].style,
+			children: []Element{},
+		}
+		for _, child := range n.children {
+			element.children = append(element.children, build(child))
+		}
+		return element
 	}
-	builder.WriteString(strings.Repeat("\t", depth))
-	builder.WriteString(fmt.Sprintf("<div name=%q class=%q>\n", component.name, classes))
-	for i := range component.children {
-		builder.WriteString(RenderComponent(component.children[i], depth+1))
-	}
-	builder.WriteString(strings.Repeat("\t", depth))
-	builder.WriteString("</div>\n")
-	return builder.String()
+
+	return Component{build(ns[0])}, nil
 }
