@@ -2,6 +2,7 @@ package core
 
 import (
 	"bufio"
+	"log"
 	"strings"
 )
 
@@ -98,6 +99,8 @@ func NewComponent(source string) (Component, error) {
 	// Tree structure for tracking source hierarchy, id = sourceLines index
 	ns := []*node{}
 	n := &node{id: 0}
+
+	log.Println("Source: ", source)
 
 	for _, line := range lines {
 		sourceLine := parseElement(line)

@@ -26,8 +26,8 @@ type AssetEvent struct {
 
 // AssetKey is a composite key for Assets in the store
 type AssetKey struct {
-	assetType AssetType
-	name      string
+	AssetType AssetType
+	Name      string
 }
 
 // assetEntry is the internal representation of an Asset in the store
@@ -40,9 +40,8 @@ type assetEntry struct {
 }
 
 // newAssetEntry returns a pointer to a new AssetValue instance
-func newAssetEntry(asset Asset) *assetEntry {
+func newAssetEntry() *assetEntry {
 	return &assetEntry{
-		asset:        asset,
 		dependencies: []AssetKey{},
 		dependants:   make(map[AssetKey]struct{}),
 		mu:           sync.RWMutex{},
@@ -79,22 +78,6 @@ var assetPath = map[AssetType]string{
 	StyleType: "style",
 }
 
-// updateAsset refreshes an entry in the store from the filesystem
-func (c FileStore) updateAsset(key AssetKey) error {
-	// Get current asset state
-	// current, ok := c.entries[key]
-	// if !ok {
-	// 	return fmt.Errorf("Cannot find existing Asset entry for %q", key.name)
-	// }
-	// // Load new asset from
-	// next, err := c.loadAsset(key)
-	// if err != nil {
-	// 	return err
-	// }
-
-	return nil
-}
-
 // fetchAsset retrieves an Asset from the file system
 func (c FileStore) fetchAsset(key AssetKey) (Asset, error) {
 	// Open asset source in file system
@@ -105,6 +88,11 @@ func (c FileStore) fetchAsset(key AssetKey) (Asset, error) {
 		log.Printf("%+v", errors.New("Asset not found"))
 		return nil, err
 	}
+	defer func() {
+		if err = file.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}()
 
 	// Read asset source to buffer
 	data, err := ioutil.ReadAll(file)
@@ -113,18 +101,21 @@ func (c FileStore) fetchAsset(key AssetKey) (Asset, error) {
 	}
 	source := string(data)
 
+	log.Println("Fetched source", key, err, source)
+
 	// Ensure Asset compiles
-	asset, err := NewAssetFactory(key.assetType, source)
+	asset, err := NewAssetFactory(key.AssetType, source)
 	if err != nil {
 		return nil, err
 	}
 	return asset, nil
 }
 
-// getAsset returns the internal store representation of an Asset. I
-func (c FileStore) getAsset(key AssetKey) (*assetEntry, error) {
+// getAssetEntry returns the internal store representation of an Asset.
+// If no entry exists, a new entry is first created
+func (c FileStore) getAssetEntry(key AssetKey) (*assetEntry, error) {
 	if _, ok := c.entries[key]; !ok {
-		err := c.addEntry(key)
+		err := c.initialiseAssetEntry(key)
 		if err != nil {
 			return nil, err
 		}
@@ -132,42 +123,49 @@ func (c FileStore) getAsset(key AssetKey) (*assetEntry, error) {
 	return c.entries[key], nil
 }
 
-// Compare old/new
-// Update dependants
-func (c FileStore) updateAssetDependencies(key AssetKey) error {
-	diff := map[AssetKey]int{}
-	asset, err := c.getAsset(key)
+func (c FileStore) updateAssetEntry(key AssetKey) error {
+	// Look up Asset entry
+	assetEntry, err := c.getAssetEntry(key)
 	if err != nil {
 		return err
 	}
 
-	// Update dependency map
+	// Caclulate dependency changes between current and new asset state
 	// -1: Dependency exists only in previous state
 	//  0: Dependency exists in both previous and new state
 	//  1: Dependency exists only in new state
-	for _, oldKey := range asset.dependencies {
+	diff := map[AssetKey]int{}
+
+	// Get current dependencies
+	for _, oldKey := range assetEntry.dependencies {
 		diff[oldKey] = -1
 	}
 
-	// Get new dependencies
-	newDependencies := getDependencyKeys(asset.asset)
+	// Fetch latest Asset version from file system
+	newAsset, err := c.fetchAsset(key)
+	if err != nil {
+		return err
+	}
 
+	// Get new dependencies
+	newDependencies := getDependencyKeys(newAsset)
 	for _, newKey := range newDependencies {
-		if _, ok := diff[newKey]; !ok {
-			diff[newKey] = 1
-		} else {
+		if _, ok := diff[newKey]; ok {
 			diff[newKey] = 0
+		} else {
+			diff[newKey] = 1
 		}
 	}
 
-	// Update asset to new dependencies
-	asset.mu.Lock()
-	asset.dependencies = newDependencies
-	asset.mu.Unlock()
+	// Update asset and dependencies
+	assetEntry.mu.Lock()
+	assetEntry.asset = newAsset
+	assetEntry.dependencies = newDependencies
+	assetEntry.mu.Unlock()
 
 	// Update dependants
 	for k, v := range diff {
-		dependency, err := c.getAsset(k)
+		dependency, err := c.getAssetEntry(k)
 		if err != nil {
 			return err
 		} else if v == -1 {
@@ -182,38 +180,48 @@ func (c FileStore) updateAssetDependencies(key AssetKey) error {
 	return nil
 }
 
-func (c FileStore) addEntry(key AssetKey) error {
-	// Load Asset from file system
-	asset, err := c.fetchAsset(key)
+func (c FileStore) notifyWatchers(key AssetKey) error {
+	assetEntry, err := c.getAssetEntry(key)
 	if err != nil {
-		return err
+		return nil
 	}
-	// Create new store entry for Asset
-	assetEntry := newAssetEntry(asset)
+	assetEntry.mu.RLock()
+	for watcher := range assetEntry.watchers {
+		log.Printf("Notifying watcher (%q)\n", key.Name)
+		watcher <- AssetEvent{key, true}
+		log.Println("**Notified")
+	}
+	for dependant := range assetEntry.dependants {
+		log.Printf("Bubbling change event (%q)\n", dependant.Name)
+		c.notifyWatchers(dependant)
+	}
+	assetEntry.mu.RUnlock()
+	return nil
+}
+
+func (c FileStore) initialiseAssetEntry(key AssetKey) error {
+	// Immediately create a new Asset entry
+	assetEntry := newAssetEntry()
 	c.entries[key] = assetEntry
-	err = c.updateAssetDependencies(key)
+
+	// Update Asset from the file system
+	c.updateAssetEntry(key)
+
+	// Watch for changes to source in the file system
+	watch, err := c.fs.Watch(c.getPath(key), c.done)
 	if err != nil {
 		return err
 	}
 
-	// Create watcher channel
-	assetWatch, err := c.fs.Watch(c.getPath(key), c.done)
-	if err != nil {
-		return err
-	}
-
+	// When source changes, update asset entry and notify subscribers
 	go func() {
-		for range assetWatch {
+		for range watch {
+			log.Printf("Detected change in %q\n", c.getPath(key))
+
 			// Notify any watchers subscribed to the asset
-			assetEntry.mu.RLock()
-			assetEntry.asset, err = c.fetchAsset(key)
-			if err != nil {
-				panic(err)
-			}
-			for watcher := range assetEntry.watchers {
-				watcher <- AssetEvent{key, true}
-			}
-			assetEntry.mu.RUnlock()
+			c.updateAssetEntry(key)
+			c.notifyWatchers(key)
+			log.Println("WATHED")
 		}
 	}()
 
@@ -221,7 +229,7 @@ func (c FileStore) addEntry(key AssetKey) error {
 }
 
 func (c FileStore) getPath(key AssetKey) string {
-	return filepath.Join(c.path, assetPath[key.assetType], key.name)
+	return filepath.Join(c.path, assetPath[key.AssetType], key.Name)
 }
 
 // Watch an Asset in the store, subscribing to changes
@@ -230,7 +238,7 @@ func (c FileStore) Watch(key AssetKey, done <-chan bool) <-chan AssetEvent {
 
 	_, err := c.Get(key)
 	if err != nil {
-		log.Fatalf("Unable to watch %q, %v", key.name, err)
+		log.Fatalf("Unable to watch %q, %v", key.Name, err)
 	}
 
 	// Subscribe to change events for asset
@@ -238,13 +246,6 @@ func (c FileStore) Watch(key AssetKey, done <-chan bool) <-chan AssetEvent {
 	assetEntry.mu.Lock()
 	assetEntry.watchers[ch] = struct{}{}
 	assetEntry.mu.Unlock()
-
-	// depWatchers := []<-chan AssetEvent{}
-	// for _, dependency := range getDependencyKeys(asset) {
-	// 	dependency = c.entries
-	// 	depWatchers = append(depWatchers, w)
-	// }
-	// depWatcher := merge(ch, depWatchers...)
 
 	go func() {
 		<-done
@@ -262,10 +263,10 @@ func (c FileStore) Watch(key AssetKey, done <-chan bool) <-chan AssetEvent {
 	return ch
 }
 
-// Get TODO
+// Get returns and Asset from the store
 func (c FileStore) Get(key AssetKey) (Asset, error) {
 	// Load asset from file system if not found in cache
-	asset, err := c.getAsset(key)
+	asset, err := c.getAssetEntry(key)
 	if err != nil {
 		return nil, err
 	}
