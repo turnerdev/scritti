@@ -17,7 +17,10 @@ vendor
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
+coverage.*
 __debug_bin
 design.md
 *.code-workspace
 .vscode
+/www/*.wasm
+/www/wasm_exec.js
