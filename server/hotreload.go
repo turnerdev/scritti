@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -80,32 +81,59 @@ func (p ComponentServer) handleWebSockets(ws *websocket.Conn) {
 		switch request.Method {
 		case "get":
 			var key core.AssetKey
-			log.Println("test")
 			json.Unmarshal([]byte(request.Params), &key)
 			log.Println(key)
 			asset, err := p.store.Get(key)
 			if err != nil {
-				log.Fatal(err)
+				websocket.JSON.Send(ws, &JsonRpcResponse{
+					JSONRPC: "2.0",
+					Error: &JsonRpcError{
+						Code:    1,
+						Message: err.Error(),
+					},
+					ID: request.ID,
+				})
 			}
-			component := asset.(core.Component)
+
+			buffer := new(bytes.Buffer)
+			var response JsonRpcResponse
+
+			switch v := asset.(type) {
+			case core.Component:
+				err = core.RenderComponent(buffer, v, p.store.Get)
+				if err != nil {
+					log.Fatal(err)
+				}
+				response = JsonRpcResponse{
+					JSONRPC: "2.0",
+					Result: &AssetData{
+						ID:     key.Name,
+						Source: v.Source,
+						HTML:   buffer.String(),
+					},
+					ID: request.ID,
+				}
+			case core.Style:
+				response = JsonRpcResponse{
+					JSONRPC: "2.0",
+					Result: &AssetData{
+						ID:     key.Name,
+						Source: v.Source,
+					},
+					ID: request.ID,
+				}
+			default:
+				response = JsonRpcResponse{
+					JSONRPC: "2.0",
+					Error: &JsonRpcError{
+						Code:    1,
+						Message: fmt.Sprintf("Can't convert %d %q", key.AssetType, key.Name),
+					},
+					ID: request.ID,
+				}
+			}
 
 			// Render output
-			buffer := new(bytes.Buffer)
-			err = core.RenderComponent(buffer, component, p.store.Get)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			response := JsonRpcResponse{
-				JSONRPC: "2.0",
-				Result: &AssetData{
-					ID:     "main",
-					Source: component.Source,
-					HTML:   buffer.String(),
-				},
-				ID: request.ID,
-			}
-
 			err = websocket.JSON.Send(ws, &response)
 			if err != nil {
 				log.Println("message not sent " + err.Error())
