@@ -48,6 +48,45 @@ func TestOSFileSystem(t *testing.T) {
 		events, _ := fs.Watch(filename, done)
 
 		// Modify file
+
+		WriteFile(t, filename, newContent)
+
+		// Receive modification event
+		_, ok := <-events
+		if !ok {
+			t.Error("Channel is closed")
+		}
+
+		// Close done channel to indicate we have finished watching
+		close(done)
+
+		// Expect watcher to close events channel
+		_, ok = <-events
+		if ok {
+			t.Error("Channel is not closed")
+		}
+
+	})
+
+	t.Run("Test OS File System - Watch after rename", func(t *testing.T) {
+		content := "old content"
+		newContent := "new content"
+		filename := tempMkFile(t, "", "testfile")
+		fs := NewOSFileSystem()
+		done := make(chan bool)
+
+		// Write initial file value
+		WriteFile(t, filename, content)
+
+		// Watch file for modifications, receiving events
+		events, _ := fs.Watch(filename, done)
+
+		// TODO: Error
+		// os.Remove(filename)
+		// os.Create(filename)
+		// time.Sleep(1)
+
+		// Modify file
 		WriteFile(t, filename, newContent)
 
 		// Receive modification event

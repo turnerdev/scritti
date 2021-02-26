@@ -17,6 +17,7 @@ type node struct {
 
 // Style asset
 type Style struct {
+	Source  string
 	classes []string
 }
 
@@ -28,6 +29,7 @@ type Element struct {
 
 // Component asset
 type Component struct {
+	Source string
 	Element
 }
 
@@ -81,7 +83,8 @@ func NewStyle(source string) (Style, error) {
 		lines = append(lines, strings.TrimSpace(sc.Text()))
 	}
 	return Style{
-		lines,
+		Source:  source,
+		classes: lines,
 	}, nil
 }
 
@@ -134,5 +137,12 @@ func NewComponent(source string) (Component, error) {
 		return element
 	}
 
-	return Component{build(ns[0])}, nil
+	if len(ns) == 0 {
+		return Component{}, nil
+	}
+
+	return Component{
+		Source:  source,
+		Element: build(ns[0]),
+	}, nil
 }

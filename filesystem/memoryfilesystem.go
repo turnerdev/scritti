@@ -1,32 +1,42 @@
 package filesystem
 
 import (
-	"errors"
+	"fmt"
 	"io"
 	"os"
 	"sync"
 )
 
+type MemoryFileData struct {
+	data string
+}
+
 // MemoryFile provides an in-memory implementation of a file
 type MemoryFile struct {
-	content string
+	content *MemoryFileData
 }
 
 type MemoryFileEntry struct {
 	mu       sync.RWMutex
 	file     MemoryFile
-	watchers map[chan File]struct{}
+	watchers map[chan bool]struct{}
 }
 
 // Close the file
 func (MemoryFile) Close() error {
-	panic("not implemented") // TODO: Implement
+	return nil
+	// panic("not implemented") // TODO: Implement
 }
 
 // Read the file
 func (f MemoryFile) Read(p []byte) (n int, err error) {
-	n = copy(p, []byte(f.content))
+	n = copy(p, []byte(f.content.data))
 	return n, io.EOF
+}
+
+func (f MemoryFile) Write(b []byte) (n int, err error) {
+	f.content.data = string(b)
+	return len(f.content.data), nil
 }
 
 // ReadAt a given offset with a file
@@ -55,35 +65,52 @@ func NewMemoryFileSystem() *MemoryFileSystem {
 	}
 }
 
-func (fs MemoryFileSystem) Write(name string, data string) {
+func (fs MemoryFileSystem) Write(name string, data string) error {
 	// Fetch entry from filesystem
 	entry, ok := fs.files[name]
 	if !ok {
 		// Create new entry if missing
 		fs.files[name] = &MemoryFileEntry{
 			sync.RWMutex{},
-			MemoryFile{data},
-			make(map[chan File]struct{}),
+			MemoryFile{&MemoryFileData{data}},
+			make(map[chan bool]struct{}),
 		}
 		entry = fs.files[name]
 	} else {
 		// Update file content
-		entry.file.content = data
+		entry.file.Write([]byte(data))
+		// entry.file.content = data
 	}
 
 	// Notify watchers
 	entry.mu.RLock()
 	for watcher := range fs.files[name].watchers {
-		watcher <- fs.files[name].file
+		watcher <- true
 	}
 	entry.mu.RUnlock()
+
+	return nil
+}
+
+// Create a file
+func (fs MemoryFileSystem) Create(name string) (File, error) {
+	entry, ok := fs.files[name]
+	if !ok {
+		fs.files[name] = &MemoryFileEntry{
+			sync.RWMutex{},
+			MemoryFile{&MemoryFileData{}},
+			make(map[chan bool]struct{}),
+		}
+		entry = fs.files[name]
+	}
+	return entry.file, nil
 }
 
 // Open a file
 func (fs MemoryFileSystem) Open(name string) (File, error) {
 	entry, ok := fs.files[name]
 	if !ok {
-		return nil, errors.New("File not found")
+		return nil, fmt.Errorf("File not found: %q", name)
 	}
 	return entry.file, nil
 }
@@ -92,12 +119,12 @@ func (fs MemoryFileSystem) Open(name string) (File, error) {
 func (MemoryFileSystem) Stat(name string) (os.FileInfo, error) { panic("not implemented") }
 
 // Watch a file for changes, returns a receiving channel for notifying of change events
-func (fs MemoryFileSystem) Watch(name string, done <-chan bool) (<-chan File, error) {
-	files := make(chan File)
+func (fs MemoryFileSystem) Watch(name string, done <-chan bool) (<-chan bool, error) {
+	files := make(chan bool)
 
 	entry, ok := fs.files[name]
 	if !ok {
-		return nil, errors.New("File not found")
+		return nil, fmt.Errorf("File not found: %q", name)
 	}
 
 	entry.mu.Lock()

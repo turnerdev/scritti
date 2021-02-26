@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bufio"
 	"errors"
 	"io/ioutil"
 	"log"
@@ -26,8 +27,8 @@ type AssetEvent struct {
 
 // AssetKey is a composite key for Assets in the store
 type AssetKey struct {
-	AssetType AssetType
-	Name      string
+	AssetType AssetType `json:"assetType"`
+	Name      string    `json:"name"`
 }
 
 // assetEntry is the internal representation of an Asset in the store
@@ -51,6 +52,7 @@ func newAssetEntry() *assetEntry {
 
 // AssetStore provides an interface to retrieve components
 type AssetStore interface {
+	Set(key AssetKey, content string) error
 	Get(key AssetKey) (Asset, error)
 	Watch(key AssetKey, done <-chan bool) <-chan AssetEvent
 	Close() error
@@ -61,6 +63,7 @@ type FileStore struct {
 	path    string
 	fs      filesystem.FileSystem
 	entries map[AssetKey]*assetEntry
+	mu      sync.RWMutex
 	done    chan bool
 }
 
@@ -70,6 +73,7 @@ func NewFileStore(fs filesystem.FileSystem, path string) *FileStore {
 		path:    path,
 		fs:      fs,
 		entries: make(map[AssetKey]*assetEntry),
+		mu:      sync.RWMutex{},
 		done:    make(chan bool),
 	}
 }
@@ -79,11 +83,13 @@ var assetPath = map[AssetType]string{
 }
 
 // fetchAsset retrieves an Asset from the file system
-func (c FileStore) fetchAsset(key AssetKey) (Asset, error) {
+func (c *FileStore) fetchAsset(key AssetKey) (Asset, error) {
 	// Open asset source in file system
 	path := c.getPath(key)
 	log.Printf("Loading asset %q", path)
+
 	file, err := c.fs.Open(path)
+
 	if err != nil {
 		log.Printf("%+v", errors.New("Asset not found"))
 		return nil, err
@@ -101,7 +107,7 @@ func (c FileStore) fetchAsset(key AssetKey) (Asset, error) {
 	}
 	source := string(data)
 
-	log.Println("Fetched source", key, err, source)
+	log.Println("Fetched source", key, data, err)
 
 	// Ensure Asset compiles
 	asset, err := NewAssetFactory(key.AssetType, source)
@@ -113,7 +119,7 @@ func (c FileStore) fetchAsset(key AssetKey) (Asset, error) {
 
 // getAssetEntry returns the internal store representation of an Asset.
 // If no entry exists, a new entry is first created
-func (c FileStore) getAssetEntry(key AssetKey) (*assetEntry, error) {
+func (c *FileStore) getAssetEntry(key AssetKey) (*assetEntry, error) {
 	if _, ok := c.entries[key]; !ok {
 		err := c.initialiseAssetEntry(key)
 		if err != nil {
@@ -123,7 +129,7 @@ func (c FileStore) getAssetEntry(key AssetKey) (*assetEntry, error) {
 	return c.entries[key], nil
 }
 
-func (c FileStore) updateAssetEntry(key AssetKey) error {
+func (c *FileStore) updateAssetEntry(key AssetKey) error {
 	// Look up Asset entry
 	assetEntry, err := c.getAssetEntry(key)
 	if err != nil {
@@ -163,24 +169,32 @@ func (c FileStore) updateAssetEntry(key AssetKey) error {
 	assetEntry.dependencies = newDependencies
 	assetEntry.mu.Unlock()
 
+	var wg sync.WaitGroup
+	wg.Add(len(diff))
+
 	// Update dependants
 	for k, v := range diff {
-		dependency, err := c.getAssetEntry(k)
-		if err != nil {
-			return err
-		} else if v == -1 {
-			// Remove old dependant
-			delete(dependency.dependants, key)
-		} else if v == 1 {
-			// Remove old dependant
-			dependency.dependants[key] = struct{}{}
-		}
+		go func(k AssetKey, v int) {
+			dependency, err := c.getAssetEntry(k)
+			if err != nil {
+				log.Fatal(err)
+			} else if v == -1 {
+				// Remove old dependant
+				delete(dependency.dependants, key)
+			} else if v == 1 {
+				// Remove old dependant
+				dependency.dependants[key] = struct{}{}
+			}
+			wg.Done()
+		}(k, v)
 	}
+
+	wg.Wait()
 
 	return nil
 }
 
-func (c FileStore) notifyWatchers(key AssetKey) error {
+func (c *FileStore) notifyWatchers(key AssetKey) error {
 	assetEntry, err := c.getAssetEntry(key)
 	if err != nil {
 		return nil
@@ -199,7 +213,7 @@ func (c FileStore) notifyWatchers(key AssetKey) error {
 	return nil
 }
 
-func (c FileStore) initialiseAssetEntry(key AssetKey) error {
+func (c *FileStore) initialiseAssetEntry(key AssetKey) error {
 	// Immediately create a new Asset entry
 	assetEntry := newAssetEntry()
 	c.entries[key] = assetEntry
@@ -228,12 +242,12 @@ func (c FileStore) initialiseAssetEntry(key AssetKey) error {
 	return nil
 }
 
-func (c FileStore) getPath(key AssetKey) string {
+func (c *FileStore) getPath(key AssetKey) string {
 	return filepath.Join(c.path, assetPath[key.AssetType], key.Name)
 }
 
 // Watch an Asset in the store, subscribing to changes
-func (c FileStore) Watch(key AssetKey, done <-chan bool) <-chan AssetEvent {
+func (c *FileStore) Watch(key AssetKey, done <-chan bool) <-chan AssetEvent {
 	ch := make(chan AssetEvent)
 
 	_, err := c.Get(key)
@@ -263,8 +277,31 @@ func (c FileStore) Watch(key AssetKey, done <-chan bool) <-chan AssetEvent {
 	return ch
 }
 
+func (c *FileStore) Set(key AssetKey, content string) error {
+	path := c.getPath(key)
+	log.Printf("Creating asset %q", path)
+
+	file, err := c.fs.Create(path)
+
+	if err != nil {
+		log.Printf("%+v", errors.New("Asset not found"))
+		return err
+	}
+	defer func() {
+		if err = file.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	w := bufio.NewWriter(file)
+	w.WriteString(content)
+	w.Flush()
+
+	return nil
+}
+
 // Get returns and Asset from the store
-func (c FileStore) Get(key AssetKey) (Asset, error) {
+func (c *FileStore) Get(key AssetKey) (Asset, error) {
 	// Load asset from file system if not found in cache
 	asset, err := c.getAssetEntry(key)
 	if err != nil {
@@ -274,40 +311,7 @@ func (c FileStore) Get(key AssetKey) (Asset, error) {
 }
 
 // Close all channels and file system watches
-func (c FileStore) Close() error {
+func (c *FileStore) Close() error {
 	close(c.done)
 	return nil
-}
-
-func merge(ins ...<-chan filesystem.File) <-chan filesystem.File {
-	out := make(chan filesystem.File)
-	var wg sync.WaitGroup
-	wg.Add(len(ins))
-	for _, in := range ins {
-		go func(in <-chan filesystem.File) {
-			for event := range in {
-				out <- event
-			}
-			wg.Done()
-		}(in)
-	}
-	go func() {
-		wg.Wait()
-		close(out)
-	}()
-	return out
-}
-
-func indexOf(slice []AssetKey, element AssetKey) int {
-	for i, item := range slice {
-		if item == element {
-			return i
-		}
-	}
-	return -1
-}
-
-func removeAt(s []AssetKey, i int) []AssetKey {
-	s[i] = s[len(s)-1]
-	return s[:len(s)-1]
 }

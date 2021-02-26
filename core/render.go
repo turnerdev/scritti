@@ -19,12 +19,14 @@ func RenderComponent(w io.Writer, component Component, fn func(AssetKey) (Asset,
 
 // RenderElement generates HTML for an Element.
 func renderElement(element Element, fn func(AssetKey) (Asset, error)) (*html.Node, error) {
-	style, err := fn(AssetKey{StyleType, element.style})
-	if err != nil {
-		return nil, err
+	var classes string
+	if len(element.style) > 0 {
+		style, err := fn(AssetKey{StyleType, element.style})
+		if err != nil {
+			return nil, err
+		}
+		classes = strings.Join(style.(Style).classes, " ")
 	}
-
-	classes := strings.Join(style.(Style).classes, " ")
 
 	node := &html.Node{
 		Type: html.ElementNode,

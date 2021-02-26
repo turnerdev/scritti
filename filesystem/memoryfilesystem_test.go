@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"bufio"
 	"io/ioutil"
 	"sync"
 	"testing"
@@ -14,6 +15,31 @@ func TestMemoryFileSystem(t *testing.T) {
 		fs := NewMemoryFileSystem()
 		fs.Write(filename, want)
 		file, _ := fs.Open(filename)
+		data, _ := ioutil.ReadAll(file)
+		got := string(data)
+
+		if got != want {
+			t.Errorf("Got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("Test Memory File System - Create", func(t *testing.T) {
+		want := "File\nContent"
+		fs := NewMemoryFileSystem()
+		file, err := fs.Create(filename)
+		if err != nil {
+			t.Error(err)
+		}
+
+		w := bufio.NewWriter(file)
+		w.WriteString(want)
+		// w.Write()
+		w.Flush()
+
+		file, err = fs.Open(filename)
+		if err != nil {
+			t.Error(err)
+		}
 		data, _ := ioutil.ReadAll(file)
 		got := string(data)
 
@@ -45,7 +71,7 @@ func TestMemoryFileSystem(t *testing.T) {
 		// Initialize 2 watchers
 		watch1, _ := fs.Watch(filename, done)
 		watch2, _ := fs.Watch(filename, done)
-		watchers := []<-chan File{watch1, watch2}
+		watchers := []<-chan bool{watch1, watch2}
 
 		var wg sync.WaitGroup
 		wg.Add(len(watchers))
@@ -53,15 +79,13 @@ func TestMemoryFileSystem(t *testing.T) {
 		// Goroutine to process 2 file system notifications
 		processFn := func(i int) {
 			defer wg.Done()
-			data, _ := ioutil.ReadAll(<-watchers[i])
+			<-watchers[i]
+			<-watchers[i]
+			file, _ := fs.Open(filename)
+			data, _ := ioutil.ReadAll(file)
 			got := string(data)
-			if want[0] != got {
-				t.Errorf("Want %q got %q", want[0], got)
-			}
-			data, _ = ioutil.ReadAll(<-watchers[i])
-			got = string(data)
 			if want[1] != got {
-				t.Errorf("Want %q got %q", want[1], got)
+				t.Errorf("Want %q got %q", want, got)
 			}
 		}
 
