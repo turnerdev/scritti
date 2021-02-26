@@ -21,9 +21,9 @@ func isWebsocketRequest(req *http.Request) bool {
 }
 
 type AssetData struct {
-	ID     string `json:"id"`
-	Source string `json:"source"`
-	HTML   string `json:"html"`
+	ID     core.AssetKey `json:"id"`
+	Source string        `json:"source"`
+	HTML   string        `json:"html"`
 }
 
 func (p ComponentServer) handleWebSockets(ws *websocket.Conn) {
@@ -50,7 +50,7 @@ func (p ComponentServer) handleWebSockets(ws *websocket.Conn) {
 			}
 
 			data := AssetData{
-				ID:     "main",
+				ID:     core.AssetKey{0, "main"},
 				Source: component.Source,
 				HTML:   buffer.String(),
 			}
@@ -79,10 +79,46 @@ func (p ComponentServer) handleWebSockets(ws *websocket.Conn) {
 		}
 
 		switch request.Method {
+		case "set":
+			var data AssetData
+			json.Unmarshal([]byte(request.Params), &data)
+			log.Printf("Set: %q\n", data)
+			err = p.store.Set(data.ID, data.Source)
+			var response JsonRpcResponse
+
+			if err != nil {
+				response = JsonRpcResponse{
+					JSONRPC: "2.0",
+					Error: &JsonRpcError{
+						Code:    1,
+						Message: err.Error(),
+					},
+					ID: request.ID,
+				}
+			} else {
+				response = JsonRpcResponse{
+					JSONRPC: "2.0",
+					Result: &AssetData{
+						ID:     data.ID,
+						Source: data.Source,
+						HTML:   data.HTML,
+					},
+					ID: request.ID,
+				}
+			}
+
+			// Render output
+			err = websocket.JSON.Send(ws, &response)
+			if err != nil {
+				log.Println("message not sent " + err.Error())
+				break
+			}
+
 		case "get":
 			var key core.AssetKey
 			json.Unmarshal([]byte(request.Params), &key)
-			log.Println(key)
+			log.Printf("Get: %q\n", key)
+
 			asset, err := p.store.Get(key)
 			if err != nil {
 				websocket.JSON.Send(ws, &JsonRpcResponse{
@@ -107,7 +143,7 @@ func (p ComponentServer) handleWebSockets(ws *websocket.Conn) {
 				response = JsonRpcResponse{
 					JSONRPC: "2.0",
 					Result: &AssetData{
-						ID:     key.Name,
+						ID:     key,
 						Source: v.Source,
 						HTML:   buffer.String(),
 					},
@@ -117,7 +153,7 @@ func (p ComponentServer) handleWebSockets(ws *websocket.Conn) {
 				response = JsonRpcResponse{
 					JSONRPC: "2.0",
 					Result: &AssetData{
-						ID:     key.Name,
+						ID:     key,
 						Source: v.Source,
 					},
 					ID: request.ID,
@@ -147,22 +183,6 @@ func (p ComponentServer) handleWebSockets(ws *websocket.Conn) {
 	log.Println("Done!!!")
 	close(done)
 }
-
-// HotReload web socket handler
-// func (p ComponentServer) handleWebSockets(ws *websocket.Conn) {
-// 	m := Message{
-// 		Message: "reload",
-// 	}
-
-// 	for range p.reload {
-// 		err := websocket.JSON.Send(ws, &m)
-// 		if err != nil {
-// 			log.Println(err)
-// 			return
-// 		}
-// 		log.Println("Hot reloaded")
-// 	}
-// }
 
 func (p ComponentServer) HandleHotReload(w http.ResponseWriter, r *http.Request) {
 	if isWebsocketRequest(r) {
