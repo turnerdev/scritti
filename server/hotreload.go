@@ -26,6 +26,29 @@ type AssetData struct {
 	HTML   string        `json:"html"`
 }
 
+func makeError(id int, err error) *JsonRpcResponse {
+	var errorDetail *JsonRpcError
+
+	switch err.(type) {
+	case *core.AssetNotFound:
+		errorDetail = &JsonRpcError{
+			Code:    1,
+			Message: err.Error(),
+		}
+	default:
+		errorDetail = &JsonRpcError{
+			Code:    0,
+			Message: err.Error(),
+		}
+	}
+
+	return &JsonRpcResponse{
+		JSONRPC: "2.0",
+		Error:   errorDetail,
+		ID:      id,
+	}
+}
+
 func (p ComponentServer) handleWebSockets(ws *websocket.Conn) {
 	done := make(chan bool)
 	key := core.AssetKey{AssetType: core.ComponentType, Name: "main"}
@@ -119,60 +142,53 @@ func (p ComponentServer) handleWebSockets(ws *websocket.Conn) {
 			json.Unmarshal([]byte(request.Params), &key)
 			log.Printf("Get: %q\n", key)
 
+			var response *JsonRpcResponse
+			buffer := new(bytes.Buffer)
+
 			asset, err := p.store.Get(key)
 			if err != nil {
-				websocket.JSON.Send(ws, &JsonRpcResponse{
-					JSONRPC: "2.0",
-					Error: &JsonRpcError{
-						Code:    1,
-						Message: err.Error(),
-					},
-					ID: request.ID,
-				})
-			}
-
-			buffer := new(bytes.Buffer)
-			var response JsonRpcResponse
-
-			switch v := asset.(type) {
-			case core.Component:
-				err = core.RenderComponent(buffer, v, p.store.Get)
-				if err != nil {
-					log.Fatal(err)
-				}
-				response = JsonRpcResponse{
-					JSONRPC: "2.0",
-					Result: &AssetData{
-						ID:     key,
-						Source: v.Source,
-						HTML:   buffer.String(),
-					},
-					ID: request.ID,
-				}
-			case core.Style:
-				response = JsonRpcResponse{
-					JSONRPC: "2.0",
-					Result: &AssetData{
-						ID:     key,
-						Source: v.Source,
-					},
-					ID: request.ID,
-				}
-			default:
-				response = JsonRpcResponse{
-					JSONRPC: "2.0",
-					Error: &JsonRpcError{
-						Code:    1,
-						Message: fmt.Sprintf("Can't convert %d %q", key.AssetType, key.Name),
-					},
-					ID: request.ID,
+				response = makeError(request.ID, err)
+			} else {
+				switch v := asset.(type) {
+				case core.Component:
+					err = core.RenderComponent(buffer, v, p.store.Get)
+					if err != nil {
+						log.Fatal(err)
+					}
+					response = &JsonRpcResponse{
+						JSONRPC: "2.0",
+						Result: &AssetData{
+							ID:     key,
+							Source: v.Source,
+							HTML:   buffer.String(),
+						},
+						ID: request.ID,
+					}
+				case core.Style:
+					response = &JsonRpcResponse{
+						JSONRPC: "2.0",
+						Result: &AssetData{
+							ID:     key,
+							Source: v.Source,
+						},
+						ID: request.ID,
+					}
+				default:
+					response = &JsonRpcResponse{
+						JSONRPC: "2.0",
+						Error: &JsonRpcError{
+							Code:    1,
+							Message: fmt.Sprintf("Can't convert %d %q", key.AssetType, key.Name),
+						},
+						ID: request.ID,
+					}
 				}
 			}
 
 			// Render output
 			err = websocket.JSON.Send(ws, &response)
 			if err != nil {
-				log.Println("message not sent " + err.Error())
+				log.Println("Message not sent " + err.Error())
 				break
 			}
 		default:
@@ -180,7 +196,7 @@ func (p ComponentServer) handleWebSockets(ws *websocket.Conn) {
 		}
 	}
 
-	log.Println("Done!!!")
+	log.Println("Socket disconnected by user")
 	close(done)
 }
 
