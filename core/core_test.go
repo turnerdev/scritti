@@ -5,6 +5,56 @@ import (
 	"testing"
 )
 
+func TestParseElement(t *testing.T) {
+	t.Run("Test parse indent, style", func(t *testing.T) {
+		want := ComponentSourceLine{
+			indent: 2,
+			style:  "test",
+		}
+		got := parseElement("\t\ttest")
+
+		if want != got {
+			t.Errorf("got %q want %q", got, want)
+		}
+	})
+	t.Run("Test parse indent, tag, style", func(t *testing.T) {
+		want := ComponentSourceLine{
+			indent: 1,
+			tag:    "span",
+			style:  "test",
+		}
+		got := parseElement("\tspan.test")
+
+		if want != got {
+			t.Errorf("got %q want %q", got, want)
+		}
+	})
+	t.Run("NewStyle - test basic tree parsing", func(t *testing.T) {
+		want := ComponentSourceLine{
+			indent: 0,
+			tag:    "button",
+			style:  "primary",
+			text:   "Save",
+		}
+		got := parseElement(`button.primary "Save"`)
+
+		if want != got {
+			t.Errorf("got %q want %q", got, want)
+		}
+	})
+	t.Run("Test parse text", func(t *testing.T) {
+		want := ComponentSourceLine{
+			indent: 3,
+			text:   `hello "world"`, // TODO
+		}
+		got := parseElement(`   "hello \"world\""`)
+
+		if want != got {
+			t.Errorf("got %q want %q", got, want)
+		}
+	})
+}
+
 func TestNewStyle(t *testing.T) {
 	t.Run("NewStyle - test basic tree parsing", func(t *testing.T) {
 		source := strings.Join([]string{

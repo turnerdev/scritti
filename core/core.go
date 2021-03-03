@@ -3,6 +3,7 @@ package core
 import (
 	"bufio"
 	"log"
+	"regexp"
 	"strings"
 )
 
@@ -36,14 +37,29 @@ type Component struct {
 // ComponentSourceLine represents a single line of a Component source
 type ComponentSourceLine struct {
 	indent int
+	tag    string
+	text   string
 	style  string
 }
 
 func parseElement(line string) ComponentSourceLine {
-	trimmed := strings.TrimSpace(line)
+	pattern := `^(?P<indent>\s*)((?P<tag>\w+)\.)?(?P<style>\w+)?(\s*"(?P<text>[^"\\]*(\\.[^"\\]*)*)")?\s*$`
+	pathMetadata := regexp.MustCompile(pattern)
+
+	matches := pathMetadata.FindStringSubmatch(line)
+	names := pathMetadata.SubexpNames()
+	groups := make(map[string]string)
+
+	for i, match := range matches {
+		if len(names[i]) > 0 {
+			groups[names[i]] = match
+		}
+	}
 	return ComponentSourceLine{
-		strings.Index(line, trimmed),
-		trimmed,
+		len(groups["indent"]),
+		groups["tag"],
+		strings.ReplaceAll(groups["text"], `\"`, `"`),
+		groups["style"],
 	}
 }
 
@@ -103,7 +119,7 @@ func NewComponent(source string) (Component, error) {
 	ns := []*node{}
 	n := &node{id: 0}
 
-	log.Println("Source: ", source)
+	log.Println("Source: ", sourceLines)
 
 	for _, line := range lines {
 		sourceLine := parseElement(line)
@@ -111,7 +127,7 @@ func NewComponent(source string) (Component, error) {
 		if len(sourceLines) > 0 {
 			previous := len(ns) - 1
 			for {
-				if sourceLines[previous].indent >= sourceLine.indent {
+				if sourceLines[previous].indent >= sourceLine.indent && previous > 0 {
 					previous--
 				} else {
 					break
