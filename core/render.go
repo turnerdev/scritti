@@ -2,6 +2,7 @@ package core
 
 import (
 	"io"
+	"log"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -23,20 +24,34 @@ func renderElement(element Element, fn func(AssetKey) (Asset, error)) (*html.Nod
 	if len(element.style) > 0 {
 		style, err := fn(AssetKey{StyleType, element.style})
 		if err != nil {
-			return nil, err
+			log.Println(err)
+		} else {
+			classes = strings.Join(style.(Style).classes, " ")
 		}
-		classes = strings.Join(style.(Style).classes, " ")
+	}
+
+	tag := "div"
+	if len(element.tag) > 0 {
+		tag = element.tag
 	}
 
 	node := &html.Node{
 		Type: html.ElementNode,
-		Data: "div",
+		Data: tag,
 		Attr: []html.Attribute{
 			{
 				Key: "class",
 				Val: classes,
 			},
 		},
+	}
+
+	if len(element.text) > 0 {
+		textNode := &html.Node{
+			Type: html.TextNode,
+			Data: element.text,
+		}
+		node.AppendChild(textNode)
 	}
 
 	for i := range element.children {

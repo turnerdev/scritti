@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"errors"
+	"scritti/filesystem"
 	"testing"
 	// "golang.org/x/net/html"
 )
@@ -35,13 +36,18 @@ func TestRender(t *testing.T) {
 		}
 	})
 
-	t.Run("Render error", func(t *testing.T) {
+	t.Run("Render with missing styles", func(t *testing.T) {
 		delete(assets, AssetKey{StyleType, "child"})
+		want := "<div class=\"one two\"><div class=\"\"></div></div>"
 
 		b := new(bytes.Buffer)
 		err := RenderComponent(b, assets[AssetKey{ComponentType, "main"}].(Component), fn)
-		if err.Error() != "Asset not found" {
+		if err != nil {
 			t.Error(err)
+		}
+
+		if got := b.String(); got != want {
+			t.Errorf("got %q, want %q", got, want)
 		}
 	})
 }
@@ -60,4 +66,18 @@ func MakeStyle(source string) Style {
 		panic(err)
 	}
 	return style
+}
+
+func TestSampleData(t *testing.T) {
+	fs := filesystem.NewOSFileSystem()
+	store := NewFileStore(fs, "../sampledata")
+	defer store.Close()
+
+	asset, err := store.Get(AssetKey{ComponentType, "main"})
+	if err != nil {
+		t.Error(err)
+	}
+	b := new(bytes.Buffer)
+	RenderComponent(b, asset.(Component), store.Get)
+	t.Error("test")
 }
