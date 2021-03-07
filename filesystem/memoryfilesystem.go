@@ -14,6 +14,7 @@ type MemoryFileData struct {
 // MemoryFile provides an in-memory implementation of a file
 type MemoryFile struct {
 	content *MemoryFileData
+	ch      chan<- bool
 }
 
 type MemoryFileEntry struct {
@@ -36,6 +37,7 @@ func (f MemoryFile) Read(p []byte) (n int, err error) {
 
 func (f MemoryFile) Write(b []byte) (n int, err error) {
 	f.content.data = string(b)
+	f.ch <- true
 	return len(f.content.data), nil
 }
 
@@ -69,10 +71,15 @@ func (fs MemoryFileSystem) Write(name string, data string) error {
 	// Fetch entry from filesystem
 	entry, ok := fs.files[name]
 	if !ok {
+		ch := make(chan bool)
+
 		// Create new entry if missing
 		fs.files[name] = &MemoryFileEntry{
 			sync.RWMutex{},
-			MemoryFile{&MemoryFileData{data}},
+			MemoryFile{
+				&MemoryFileData{data},
+				ch,
+			},
 			make(map[chan bool]struct{}),
 		}
 		entry = fs.files[name]
@@ -96,12 +103,25 @@ func (fs MemoryFileSystem) Write(name string, data string) error {
 func (fs MemoryFileSystem) Create(name string) (File, error) {
 	entry, ok := fs.files[name]
 	if !ok {
+		ch := make(chan bool)
+
 		fs.files[name] = &MemoryFileEntry{
 			sync.RWMutex{},
-			MemoryFile{&MemoryFileData{}},
+			MemoryFile{
+				&MemoryFileData{},
+				ch,
+			},
 			make(map[chan bool]struct{}),
 		}
 		entry = fs.files[name]
+
+		go func() {
+			for range ch {
+				for watcher := range entry.watchers {
+					watcher <- true
+				}
+			}
+		}()
 	}
 	return entry.file, nil
 }

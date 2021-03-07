@@ -1,9 +1,18 @@
 package filesystem
 
 import (
+	"fmt"
 	"io"
 	"os"
 )
+
+type FileNotFound struct {
+	file string
+}
+
+func (e *FileNotFound) Error() string {
+	return fmt.Sprintf("File not found %s", e.file)
+}
 
 // File interface
 type File interface {

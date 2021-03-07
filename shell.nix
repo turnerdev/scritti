@@ -3,10 +3,11 @@
 with pkgs;
 let
   drv = callPackage ./default.nix {};
+  unstable = import (fetchTarball https://nixos.org/channels/nixos-unstable/nixexprs.tar.xz) { };
 in
   drv.overrideAttrs (attrs: {
     src = null;
-    nativeBuildInputs = [ govers delve plantuml jre graphviz ] ++ attrs.nativeBuildInputs;
+    nativeBuildInputs = [ govers delve plantuml jre graphviz gnumake unstable.tinygo ] ++ attrs.nativeBuildInputs;
     shellHook = ''
       echo 'Entering ${attrs.pname}'
       set -v

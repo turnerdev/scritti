@@ -15,8 +15,21 @@ type OSFileSystem struct{}
 func NewOSFileSystem() *OSFileSystem {
 	return &OSFileSystem{}
 }
-func (OSFileSystem) Create(name string) (File, error)      { return os.Create(name) }
-func (OSFileSystem) Open(name string) (File, error)        { return os.Open(name) }
+
+func (OSFileSystem) Create(name string) (File, error) { return os.Create(name) }
+
+func (OSFileSystem) Open(name string) (File, error) {
+	file, err := os.Open(name)
+	if err != nil {
+		switch err.(type) {
+		case *os.PathError:
+			return nil, &FileNotFound{name}
+		default:
+			return nil, err
+		}
+	}
+	return file, nil
+}
 func (OSFileSystem) Stat(name string) (os.FileInfo, error) { return os.Stat(name) }
 
 func (fs OSFileSystem) Watch(name string, done <-chan bool) (<-chan bool, error) {
@@ -38,7 +51,7 @@ func (fs OSFileSystem) Watch(name string, done <-chan bool) (<-chan bool, error)
 				log.Printf("event:%s,%s", event.Name, event.Op)
 				if event.Op&fsnotify.Remove == fsnotify.Remove {
 					if FileExist(name) {
-						log.Printf("reread  file:%s ", name)
+						log.Printf("Reread file:%s ", name)
 						err := watcher.Add(name)
 						if err != nil {
 							log.Println("error:", err)
@@ -53,7 +66,6 @@ func (fs OSFileSystem) Watch(name string, done <-chan bool) (<-chan bool, error)
 				if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Rename == fsnotify.Rename {
 					log.Println("File system write:", name)
 					files <- true
-					log.Println("next")
 				}
 
 			}
@@ -62,7 +74,8 @@ func (fs OSFileSystem) Watch(name string, done <-chan bool) (<-chan bool, error)
 
 	err = watcher.Add(name)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
+		// log.Fatal(err)
 	}
 
 	return files, nil

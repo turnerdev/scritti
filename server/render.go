@@ -3,7 +3,6 @@ package server
 import (
 	"bufio"
 	"html/template"
-	"log"
 	"net/http"
 	"os"
 	core "scritti/core"
@@ -16,8 +15,14 @@ type TestData struct {
 
 // ComponentServer TODO
 type ComponentServer struct {
-	reload chan bool
-	store  core.AssetStore
+	store core.AssetStore
+}
+
+// NewComponentServer initializes a new server with a specified Asset Store
+func NewComponentServer(store core.AssetStore) *ComponentServer {
+	return &ComponentServer{
+		store,
+	}
 }
 
 func getTemplate() string {
@@ -37,25 +42,20 @@ func getTemplate() string {
 
 // ServeHTTP test
 func (p ComponentServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// WebSocket
+	// asset, err := p.store.Get(core.AssetKey{core.ComponentType, "main"})
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
-	// Compile components
-	asset, err := p.store.Get(core.ComponentType, "main")
-
-	go p.store.Watch(core.ComponentType, "main", p.reload)
-
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
-	component := asset.(*core.Component)
-	core.CompileComponent(component, p.store)
-
-	// Render output
+	// // Render output
+	// buffer := new(bytes.Buffer)
 	base := getTemplate()
-	html := core.RenderComponent(component, 1)
+	// err = core.RenderComponent(buffer, asset.(core.Component), p.store.Get)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 	data := map[string]interface{}{
-		"Body": template.HTML(html),
+		// "Body": template.HTML(buffer.String()),
 	}
 	tmpl := template.Must(template.New("main").Parse(base))
 	tmpl.Execute(w, data)

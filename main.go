@@ -1,9 +1,13 @@
 package main
 
 import (
+	"log"
 	server "scritti/server"
 )
 
 func main() {
-	server.Server(9090)
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	port := 9090
+	server.Server(port)
 }

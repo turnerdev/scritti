@@ -23,6 +23,33 @@ func TestMemoryFileSystem(t *testing.T) {
 		}
 	})
 
+	t.Run("Test Memory File System - Sequential writes", func(t *testing.T) {
+		want := "New content"
+		fs := NewMemoryFileSystem()
+		fs.Write(filename, "Old content")
+		fs.Write(filename, want)
+		file, _ := fs.Open(filename)
+		data, _ := ioutil.ReadAll(file)
+		got := string(data)
+
+		if got != want {
+			t.Errorf("Got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("Test Memory File System - Open", func(t *testing.T) {
+		want := "File content"
+		fs := NewMemoryFileSystem()
+		fs.Write(filename, want)
+		file, _ := fs.Open(filename)
+		data, _ := ioutil.ReadAll(file)
+		got := string(data)
+
+		if got != want {
+			t.Errorf("Got %q, want %q", got, want)
+		}
+	})
+
 	t.Run("Test Memory File System - Create", func(t *testing.T) {
 		want := "File\nContent"
 		fs := NewMemoryFileSystem()

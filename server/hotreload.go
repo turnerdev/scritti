@@ -173,6 +173,15 @@ func (p ComponentServer) handleWebSockets(ws *websocket.Conn) {
 						},
 						ID: request.ID,
 					}
+				case core.SVG:
+					response = &JsonRpcResponse{
+						JSONRPC: "2.0",
+						Result: &AssetData{
+							ID:     key,
+							Source: v.Source,
+						},
+						ID: request.ID,
+					}
 				default:
 					response = &JsonRpcResponse{
 						JSONRPC: "2.0",

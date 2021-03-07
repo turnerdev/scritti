@@ -5,19 +5,21 @@ import (
 	"log"
 	"net/http"
 	core "scritti/core"
+	"scritti/filesystem"
 )
 
 // Server initiates a web server on the given port
 func Server(port int) {
 	mux := http.NewServeMux()
 
-	ch := make(chan bool)
+	fs := filesystem.NewOSFileSystem()
+	store := core.NewFileStore(fs, "sampledata")
+	defer store.Close()
 
-	server := ComponentServer{
-		reload: ch,
-		store:  core.NewFileStore("sampledata"),
-	}
+	server := NewComponentServer(store)
 
+	mux.Handle("/wasm/", http.StripPrefix("/wasm/", http.FileServer(http.Dir("./www"))))
+	mux.Handle("/js/", http.StripPrefix("", http.FileServer(http.Dir("./www"))))
 	mux.HandleFunc("/ws", server.HandleHotReload)
 	mux.HandleFunc("/", server.ServeHTTP)
 
@@ -26,6 +28,7 @@ func Server(port int) {
 		Handler: mux,
 	}
 
+	log.Printf("Starting sort on port %d", port)
 	if err := s.ListenAndServe(); err != nil {
 		log.Fatalf("Could not start server: %v", err)
 	}
