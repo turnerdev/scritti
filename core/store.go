@@ -3,12 +3,21 @@ package core
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"path/filepath"
 	"scritti/filesystem"
 	"sync"
 )
+
+type AssetNotFound struct {
+	asset AssetKey
+}
+
+func (e *AssetNotFound) Error() string {
+	return fmt.Sprintf("Asset not found [%d] %s", e.asset.AssetType, e.asset.Name)
+}
 
 // AssetType enum
 type AssetType int
@@ -17,6 +26,16 @@ type AssetType int
 const (
 	ComponentType AssetType = iota
 	StyleType
+	SVGType
+)
+
+// AssetStatus enum
+type AssetStatus int
+
+// AssetStatus enum
+const (
+	NotLoaded AssetStatus = iota
+	Loaded
 )
 
 // AssetEvent represents change event emitted from by an Asset Store
@@ -38,6 +57,7 @@ type assetEntry struct {
 	dependants   map[AssetKey]struct{}
 	mu           sync.RWMutex
 	watchers     map[chan AssetEvent]struct{}
+	status       AssetStatus
 }
 
 // newAssetEntry returns a pointer to a new AssetValue instance
@@ -47,6 +67,7 @@ func newAssetEntry() *assetEntry {
 		dependants:   make(map[AssetKey]struct{}),
 		mu:           sync.RWMutex{},
 		watchers:     make(map[chan AssetEvent]struct{}),
+		status:       NotLoaded,
 	}
 }
 
@@ -80,6 +101,7 @@ func NewFileStore(fs filesystem.FileSystem, path string) *FileStore {
 
 var assetPath = map[AssetType]string{
 	StyleType: "style",
+	SVGType:   "svg",
 }
 
 // fetchAsset retrieves an Asset from the file system
@@ -91,9 +113,15 @@ func (c *FileStore) fetchAsset(key AssetKey) (Asset, error) {
 	file, err := c.fs.Open(path)
 
 	if err != nil {
-		log.Printf("%+v", errors.New("Asset not found"))
-		return nil, err
+		log.Println(err)
+		switch err.(type) {
+		case *filesystem.FileNotFound:
+			return nil, &AssetNotFound{key}
+		default:
+			return nil, err
+		}
 	}
+
 	defer func() {
 		if err = file.Close(); err != nil {
 			log.Fatal(err)
@@ -107,26 +135,39 @@ func (c *FileStore) fetchAsset(key AssetKey) (Asset, error) {
 	}
 	source := string(data)
 
-	log.Println("Fetched source", key, data, err)
-
 	// Ensure Asset compiles
 	asset, err := NewAssetFactory(key.AssetType, source)
 	if err != nil {
 		return nil, err
 	}
+
 	return asset, nil
 }
 
 // getAssetEntry returns the internal store representation of an Asset.
 // If no entry exists, a new entry is first created
 func (c *FileStore) getAssetEntry(key AssetKey) (*assetEntry, error) {
-	if _, ok := c.entries[key]; !ok {
-		err := c.initialiseAssetEntry(key)
-		if err != nil {
+	// Create Asset entry if non existant
+	c.mu.RLock()
+	assetEntry, ok := c.entries[key]
+	c.mu.RUnlock()
+
+	if !ok {
+		c.mu.Lock()
+		c.entries[key] = newAssetEntry()
+		assetEntry = c.entries[key]
+		c.mu.Unlock()
+	}
+
+	if assetEntry.status == NotLoaded {
+		err := c.loadAssetEntry(key)
+		// TODO: Check for AssetNotFound error
+		if _, ok := err.(*AssetNotFound); err != nil && !ok {
 			return nil, err
 		}
 	}
-	return c.entries[key], nil
+
+	return assetEntry, nil
 }
 
 func (c *FileStore) updateAssetEntry(key AssetKey) error {
@@ -177,12 +218,14 @@ func (c *FileStore) updateAssetEntry(key AssetKey) error {
 		go func(k AssetKey, v int) {
 			dependency, err := c.getAssetEntry(k)
 			if err != nil {
-				log.Fatal(err)
+				log.Printf("Can't load dependency %q of %q (%s)\n", k.Name, key.Name, err)
 			} else if v == -1 {
 				// Remove old dependant
 				delete(dependency.dependants, key)
 			} else if v == 1 {
-				// Remove old dependant
+				// Add new dependant
+				log.Printf("> Add new dependant %q of %q", k.Name, key.Name)
+				log.Println(dependency, err)
 				dependency.dependants[key] = struct{}{}
 			}
 			wg.Done()
@@ -205,6 +248,8 @@ func (c *FileStore) notifyWatchers(key AssetKey) error {
 		watcher <- AssetEvent{key, true}
 		log.Println("**Notified")
 	}
+
+	log.Printf("Notifying %d dependants of %s\n", len(assetEntry.dependants), key.Name)
 	for dependant := range assetEntry.dependants {
 		log.Printf("Bubbling change event (%q)\n", dependant.Name)
 		c.notifyWatchers(dependant)
@@ -213,13 +258,25 @@ func (c *FileStore) notifyWatchers(key AssetKey) error {
 	return nil
 }
 
-func (c *FileStore) initialiseAssetEntry(key AssetKey) error {
-	// Immediately create a new Asset entry
-	assetEntry := newAssetEntry()
-	c.entries[key] = assetEntry
+func (c *FileStore) loadAssetEntry(key AssetKey) error {
+	log.Printf("Loading asset entry %d-%s", key.AssetType, key.Name)
+
+	// Fetch latest Asset version from file system
+	_, err := c.fetchAsset(key)
+	if err != nil {
+		return err
+	}
+
+	// Update Asset Entry status
+	c.mu.RLock()
+	c.entries[key].status = Loaded
+	c.mu.RUnlock()
 
 	// Update Asset from the file system
-	c.updateAssetEntry(key)
+	err = c.updateAssetEntry(key)
+	if err != nil {
+		return err
+	}
 
 	// Watch for changes to source in the file system
 	watch, err := c.fs.Watch(c.getPath(key), c.done)
@@ -235,7 +292,6 @@ func (c *FileStore) initialiseAssetEntry(key AssetKey) error {
 			// Notify any watchers subscribed to the asset
 			c.updateAssetEntry(key)
 			c.notifyWatchers(key)
-			log.Println("WATHED")
 		}
 	}()
 
@@ -256,7 +312,9 @@ func (c *FileStore) Watch(key AssetKey, done <-chan bool) <-chan AssetEvent {
 	}
 
 	// Subscribe to change events for asset
+	c.mu.RLock()
 	assetEntry := c.entries[key]
+	c.mu.RUnlock()
 	assetEntry.mu.Lock()
 	assetEntry.watchers[ch] = struct{}{}
 	assetEntry.mu.Unlock()
@@ -277,12 +335,14 @@ func (c *FileStore) Watch(key AssetKey, done <-chan bool) <-chan AssetEvent {
 	return ch
 }
 
+// func
+
 func (c *FileStore) Set(key AssetKey, content string) error {
 	path := c.getPath(key)
 	log.Printf("Creating asset %q", path)
+	log.Printf("!@!@!@!@!@!@%q", content)
 
 	file, err := c.fs.Create(path)
-
 	if err != nil {
 		log.Printf("%+v", errors.New("Asset not found"))
 		return err
@@ -297,6 +357,17 @@ func (c *FileStore) Set(key AssetKey, content string) error {
 	w.WriteString(content)
 	w.Flush()
 
+	assetEntry, err := c.getAssetEntry(key)
+	if err != nil {
+		return err
+	}
+
+	log.Println("!@!@!@!@STORE VALUE")
+	switch v := assetEntry.asset.(type) {
+	case Style:
+		log.Println(v.Source)
+	}
+
 	return nil
 }
 
@@ -307,6 +378,11 @@ func (c *FileStore) Get(key AssetKey) (Asset, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if asset.status != Loaded {
+		return nil, errors.New("Asset not loaded")
+	}
+
 	return asset.asset, nil
 }
 

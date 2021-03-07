@@ -45,6 +45,34 @@ func TestFileStoreGet(t *testing.T) {
 	})
 }
 
+func TestFileStoreSet(t *testing.T) {
+	fs := filesystem.NewMemoryFileSystem()
+	store := NewFileStore(fs, "")
+
+	t.Run("Test update Component", func(t *testing.T) {
+		key := AssetKey{ComponentType, "main"}
+
+		store.Set(key, "a")
+		store.Set(key, "ab")
+		store.Set(key, "abc")
+		store.Set(key, "abcd")
+
+		asset, err := store.Get(AssetKey{ComponentType, "main"})
+		if err != nil {
+			t.Error(err)
+		}
+
+		component, ok := asset.(Component)
+		if !ok {
+			t.Errorf("Got %T, expected Component", asset)
+		}
+
+		if component.Source != "abcd" {
+			t.Errorf("Got %q, want %q", component.Source, "abcd")
+		}
+	})
+}
+
 func TestFileStoreWatch(t *testing.T) {
 	fs := filesystem.NewMemoryFileSystem()
 	fs.Write("main", "root\n\tnode1\n\tnode2")

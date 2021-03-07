@@ -22,11 +22,23 @@ type Style struct {
 	classes []string
 }
 
+// SVG asset
+type SVG struct {
+	Source string
+}
+
 // Element of a component
 type Element struct {
+	text     string
+	tag      string
 	style    string
 	children []Element
 }
+
+// // Text node
+// type Text struct {
+// 	value string
+// }
 
 // Component asset
 type Component struct {
@@ -87,8 +99,15 @@ func NewAssetFactory(assetType AssetType, source string) (Asset, error) {
 		return NewComponent(source)
 	case StyleType:
 		return NewStyle(source)
+	case SVGType:
+		return NewSVG(source)
 	}
 	panic("Not implemented")
+}
+
+// NewSVG construts a new SVG instance from provided source
+func NewSVG(source string) (SVG, error) {
+	return SVG{source}, nil
 }
 
 // NewStyle constructs a new Style instance from provided source
@@ -143,10 +162,14 @@ func NewComponent(source string) (Component, error) {
 
 	var build func(*node) Element
 	build = func(n *node) Element {
+		source := sourceLines[n.id]
 		element := Element{
-			style:    sourceLines[n.id].style,
+			text:     source.text,
+			tag:      source.tag,
+			style:    source.style,
 			children: []Element{},
 		}
+
 		for _, child := range n.children {
 			element.children = append(element.children, build(child))
 		}

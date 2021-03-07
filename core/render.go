@@ -21,12 +21,25 @@ func RenderComponent(w io.Writer, component Component, fn func(AssetKey) (Asset,
 // RenderElement generates HTML for an Element.
 func renderElement(element Element, fn func(AssetKey) (Asset, error)) (*html.Node, error) {
 	var classes string
+	var svgsource string
+
+	// If element specified style, fetch classes from Style asset
 	if len(element.style) > 0 {
 		style, err := fn(AssetKey{StyleType, element.style})
 		if err != nil {
 			log.Println(err)
 		} else {
 			classes = strings.Join(style.(Style).classes, " ")
+		}
+	}
+
+	// If element tag is 'svg', fetch source from SVG asset
+	if element.tag == "svg" && len(element.style) > 0 {
+		svg, err := fn(AssetKey{SVGType, element.style})
+		if err != nil {
+			log.Println(err)
+		} else {
+			svgsource = svg.(SVG).Source
 		}
 	}
 
@@ -44,6 +57,21 @@ func renderElement(element Element, fn func(AssetKey) (Asset, error)) (*html.Nod
 				Val: classes,
 			},
 		},
+	}
+
+	if len(svgsource) > 0 {
+		reader := strings.NewReader(svgsource)
+		nodes, err := html.Parse(reader)
+		if err != nil {
+			log.Println(err)
+		}
+		body := nodes.FirstChild.FirstChild.NextSibling
+		node = body.FirstChild
+		body.RemoveChild(node)
+		node.Attr = append(node.Attr, html.Attribute{
+			Key: "class",
+			Val: classes,
+		})
 	}
 
 	if len(element.text) > 0 {
