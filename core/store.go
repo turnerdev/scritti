@@ -75,6 +75,7 @@ func newAssetEntry() *assetEntry {
 type AssetStore interface {
 	Set(key AssetKey, content string) error
 	Get(key AssetKey) (Asset, error)
+	List() []AssetKey
 	Watch(key AssetKey, done <-chan bool) <-chan AssetEvent
 	Close() error
 }
@@ -316,6 +317,7 @@ func (c *FileStore) Watch(key AssetKey, done <-chan bool) <-chan AssetEvent {
 	assetEntry := c.entries[key]
 	c.mu.RUnlock()
 	assetEntry.mu.Lock()
+
 	assetEntry.watchers[ch] = struct{}{}
 	assetEntry.mu.Unlock()
 
@@ -335,12 +337,9 @@ func (c *FileStore) Watch(key AssetKey, done <-chan bool) <-chan AssetEvent {
 	return ch
 }
 
-// func
-
+// Set creates or updates an Asset in the store with the given content
 func (c *FileStore) Set(key AssetKey, content string) error {
 	path := c.getPath(key)
-	log.Printf("Creating asset %q", path)
-	log.Printf("!@!@!@!@!@!@%q", content)
 
 	file, err := c.fs.Create(path)
 	if err != nil {
@@ -357,15 +356,9 @@ func (c *FileStore) Set(key AssetKey, content string) error {
 	w.WriteString(content)
 	w.Flush()
 
-	assetEntry, err := c.getAssetEntry(key)
+	_, err = c.getAssetEntry(key)
 	if err != nil {
 		return err
-	}
-
-	log.Println("!@!@!@!@STORE VALUE")
-	switch v := assetEntry.asset.(type) {
-	case Style:
-		log.Println(v.Source)
 	}
 
 	return nil
@@ -384,6 +377,15 @@ func (c *FileStore) Get(key AssetKey) (Asset, error) {
 	}
 
 	return asset.asset, nil
+}
+
+// List returns the AssetKeys of all entries in the store
+func (c *FileStore) List() []AssetKey {
+	result := make([]AssetKey, 0)
+	for k := range c.entries {
+		result = append(result, k)
+	}
+	return result
 }
 
 // Close all channels and file system watches

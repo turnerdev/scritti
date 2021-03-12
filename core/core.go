@@ -76,18 +76,30 @@ func parseElement(line string) ComponentSourceLine {
 }
 
 func getDependencyKeys(asset Asset) []AssetKey {
+	distinct := make(map[AssetKey]bool)
 	keys := []AssetKey{}
 	switch v := asset.(type) {
 	case Component:
-		keys = append(keys, AssetKey{StyleType, v.style})
+		distinct[AssetKey{StyleType, v.style}] = true
+		// keys = append(keys, AssetKey{StyleType, v.style})
 		for _, child := range v.children {
-			keys = append(keys, getDependencyKeys(child)...)
+			for _, childKey := range getDependencyKeys(child) {
+				distinct[childKey] = true
+			}
+			// keys = append(keys, getDependencyKeys(child)...)
 		}
 	case Element:
-		keys = append(keys, AssetKey{StyleType, v.style})
+		distinct[AssetKey{StyleType, v.style}] = true
+		// keys = append(keys, AssetKey{StyleType, v.style})
 		for _, child := range v.children {
-			keys = append(keys, getDependencyKeys(child)...)
+			for _, childKey := range getDependencyKeys(child) {
+				distinct[childKey] = true
+			}
+			// keys = append(keys, getDependencyKeys(child)...)
 		}
+	}
+	for k := range distinct {
+		keys = append(keys, k)
 	}
 	return keys
 }

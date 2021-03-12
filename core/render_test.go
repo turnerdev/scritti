@@ -65,7 +65,7 @@ func TestSVGRender(t *testing.T) {
 		return assets[assetKey], nil
 	}
 
-	want := "<svg class=\"one two\"><path d=\"0\"></path></svg>"
+	want := "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\" class=\"one two\"><path d=\"0\"></path></svg>"
 
 	b := new(bytes.Buffer)
 	err := RenderComponent(b, assets[AssetKey{ComponentType, "main"}].(Component), fn)

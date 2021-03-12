@@ -67,38 +67,6 @@ func NewMemoryFileSystem() *MemoryFileSystem {
 	}
 }
 
-func (fs MemoryFileSystem) Write(name string, data string) error {
-	// Fetch entry from filesystem
-	entry, ok := fs.files[name]
-	if !ok {
-		ch := make(chan bool)
-
-		// Create new entry if missing
-		fs.files[name] = &MemoryFileEntry{
-			sync.RWMutex{},
-			MemoryFile{
-				&MemoryFileData{data},
-				ch,
-			},
-			make(map[chan bool]struct{}),
-		}
-		entry = fs.files[name]
-	} else {
-		// Update file content
-		entry.file.Write([]byte(data))
-		// entry.file.content = data
-	}
-
-	// Notify watchers
-	entry.mu.RLock()
-	for watcher := range fs.files[name].watchers {
-		watcher <- true
-	}
-	entry.mu.RUnlock()
-
-	return nil
-}
-
 // Create a file
 func (fs MemoryFileSystem) Create(name string) (File, error) {
 	entry, ok := fs.files[name]

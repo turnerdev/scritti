@@ -13,7 +13,7 @@ func TestMemoryFileSystem(t *testing.T) {
 	t.Run("Test Memory File System - Open", func(t *testing.T) {
 		want := "File content"
 		fs := NewMemoryFileSystem()
-		fs.Write(filename, want)
+		fsWrite(fs, filename, want)
 		file, _ := fs.Open(filename)
 		data, _ := ioutil.ReadAll(file)
 		got := string(data)
@@ -26,8 +26,8 @@ func TestMemoryFileSystem(t *testing.T) {
 	t.Run("Test Memory File System - Sequential writes", func(t *testing.T) {
 		want := "New content"
 		fs := NewMemoryFileSystem()
-		fs.Write(filename, "Old content")
-		fs.Write(filename, want)
+		fsWrite(fs, filename, "Old content")
+		fsWrite(fs, filename, want)
 		file, _ := fs.Open(filename)
 		data, _ := ioutil.ReadAll(file)
 		got := string(data)
@@ -40,7 +40,7 @@ func TestMemoryFileSystem(t *testing.T) {
 	t.Run("Test Memory File System - Open", func(t *testing.T) {
 		want := "File content"
 		fs := NewMemoryFileSystem()
-		fs.Write(filename, want)
+		fsWrite(fs, filename, want)
 		file, _ := fs.Open(filename)
 		data, _ := ioutil.ReadAll(file)
 		got := string(data)
@@ -58,10 +58,7 @@ func TestMemoryFileSystem(t *testing.T) {
 			t.Error(err)
 		}
 
-		w := bufio.NewWriter(file)
-		w.WriteString(want)
-		// w.Write()
-		w.Flush()
+		fsWrite(fs, filename, want)
 
 		file, err = fs.Open(filename)
 		if err != nil {
@@ -92,7 +89,7 @@ func TestMemoryFileSystem(t *testing.T) {
 
 		// Create memory file system with a single file
 		fs := NewMemoryFileSystem()
-		fs.Write(filename, "Initial content")
+		fsWrite(fs, filename, "Initial content")
 		done := make(chan bool)
 
 		// Initialize 2 watchers
@@ -122,7 +119,7 @@ func TestMemoryFileSystem(t *testing.T) {
 
 		// Write 2 changes
 		for _, data := range want {
-			fs.Write(filename, data)
+			fsWrite(fs, filename, data)
 		}
 
 		// Expect all goroutines to complete
@@ -132,12 +129,12 @@ func TestMemoryFileSystem(t *testing.T) {
 		close(done)
 
 		// Ensure all watchers have been removed - no blocking channels
-		fs.Write(filename, "test")
+		fsWrite(fs, filename, "test")
 	})
 
 	t.Run("Test Memory File System - Watch missing file", func(t *testing.T) {
 		fs := NewMemoryFileSystem()
-		fs.Write(filename, "Initial content")
+		fsWrite(fs, filename, "Initial content")
 		done := make(chan bool)
 
 		_, err := fs.Watch("wrongfile", done)
@@ -148,4 +145,15 @@ func TestMemoryFileSystem(t *testing.T) {
 		close(done)
 	})
 
+}
+
+func fsWrite(fs FileSystem, name string, content string) {
+	file, err := fs.Create(name)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	w := bufio.NewWriter(file)
+	w.WriteString(content)
+	w.Flush()
 }

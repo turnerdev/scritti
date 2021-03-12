@@ -77,7 +77,7 @@ func renderElement(element Element, fn func(AssetKey) (Asset, error)) (*html.Nod
 	if len(element.text) > 0 {
 		textNode := &html.Node{
 			Type: html.TextNode,
-			Data: element.text,
+			Data: strings.ReplaceAll(element.text, "\\n", "\n"),
 		}
 		node.AppendChild(textNode)
 	}

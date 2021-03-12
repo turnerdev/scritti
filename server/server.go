@@ -1,12 +1,50 @@
 package server
 
 import (
+	"bufio"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
+	"os"
 	core "scritti/core"
 	"scritti/filesystem"
+	"strings"
 )
+
+type ComponentServer struct {
+	store core.AssetStore
+}
+
+// NewComponentServer initializes a new server with a specified Asset Store
+func NewComponentServer(store core.AssetStore) *ComponentServer {
+	return &ComponentServer{
+		store,
+	}
+}
+
+func getTemplate() string {
+	file, err := os.Open("www/index.html")
+	if err != nil {
+		panic("Unable to open template")
+	}
+	defer file.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	return strings.Join(lines, "\n")
+}
+
+// ServeHTTP test
+func (p ComponentServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	base := getTemplate()
+	data := map[string]interface{}{}
+	tmpl := template.Must(template.New("main").Parse(base))
+	tmpl.Execute(w, data)
+}
 
 // Server initiates a web server on the given port
 func Server(port int) {

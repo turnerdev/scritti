@@ -108,11 +108,12 @@ func TestDependencies(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		want := [2]AssetKey{
+		want := [3]AssetKey{
 			{StyleType, "root"},
 			{StyleType, "child"},
+			{StyleType, "grandchild"},
 		}
-		var got [2]AssetKey
+		var got [3]AssetKey
 		copy(got[:], getDependencyKeys(component))
 
 		if want != got {
