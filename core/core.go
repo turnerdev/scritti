@@ -35,11 +35,6 @@ type Element struct {
 	children []Element
 }
 
-// // Text node
-// type Text struct {
-// 	value string
-// }
-
 // Component asset
 type Component struct {
 	Source string

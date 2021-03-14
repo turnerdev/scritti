@@ -346,17 +346,22 @@ func (c *FileStore) Set(key AssetKey, content string) error {
 		log.Printf("%+v", errors.New("Asset not found"))
 		return err
 	}
-	defer func() {
-		if err = file.Close(); err != nil {
-			log.Fatal(err)
-		}
-	}()
 
+	fmt.Printf("Setting %q with lenth %d\n", key, len(content))
 	w := bufio.NewWriter(file)
 	w.WriteString(content)
 	w.Flush()
+	file.Close()
 
-	_, err = c.getAssetEntry(key)
+	ll, err := c.getAssetEntry(key)
+
+	switch v := ll.asset.(type) {
+	case Component:
+		fmt.Printf("Get lenth %d\n", len(v.Source))
+	case Style:
+		fmt.Printf("Get lenth %d\n", len(v.Source))
+	}
+
 	if err != nil {
 		return err
 	}

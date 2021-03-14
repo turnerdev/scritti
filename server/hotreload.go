@@ -169,13 +169,14 @@ func (p ComponentServer) getAction(request JsonRpcRequest) JsonRpcResponse {
 }
 
 func (p ComponentServer) listAction(request JsonRpcRequest) JsonRpcResponse {
+	key := core.AssetKey{AssetType: core.ComponentType, Name: "main"}
+	p.store.Get(key)
+	l := p.store.List()
+
 	return JsonRpcResponse{
 		JSONRPC: "2.0",
-		Error: &JsonRpcError{
-			Code:    1,
-			Message: fmt.Sprintf("Can't convert %d %q", key.AssetType, key.Name),
-		},
-		ID: request.ID,
+		Result:  l,
+		ID:      request.ID,
 	}
 }
 
@@ -192,28 +193,27 @@ func (p ComponentServer) rpcLoop(ws *websocket.Conn) {
 			break
 		}
 
+		var response JsonRpcResponse
+
 		switch request.Method {
 		case "set":
-			response := p.setAction(request)
-			// Render output
-			err = websocket.JSON.Send(ws, &response)
-			if err != nil {
-				log.Println("message not sent " + err.Error())
-				break
-			}
+			response = p.setAction(request)
 
 		case "get":
+			response = p.getAction(request)
 
-			var response *JsonRpcResponse
+		case "list":
+			response = p.listAction(request)
 
-			// Render output
-			err = websocket.JSON.Send(ws, &response)
-			if err != nil {
-				log.Println("Message not sent " + err.Error())
-				break
-			}
 		default:
+			response = makeError(request.ID, fmt.Errorf("Unknown request method %q", request.Method))
 			log.Println("Unknown request method", request)
+		}
+
+		err = websocket.JSON.Send(ws, &response)
+		if err != nil {
+			log.Println("Message not sent " + err.Error())
+			break
 		}
 	}
 

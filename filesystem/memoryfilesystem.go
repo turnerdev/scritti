@@ -1,48 +1,49 @@
 package filesystem
 
 import (
+	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"sync"
 )
 
-type MemoryFileData struct {
-	data string
-}
-
 // MemoryFile provides an in-memory implementation of a file
 type MemoryFile struct {
-	content *MemoryFileData
-	ch      chan<- bool
+	entry  *MemoryFileEntry
+	buffer *bytes.Buffer
 }
 
 type MemoryFileEntry struct {
 	mu       sync.RWMutex
-	file     MemoryFile
+	content  string
 	watchers map[chan bool]struct{}
 }
 
 // Close the file
-func (MemoryFile) Close() error {
+func (p MemoryFile) Close() error {
 	return nil
 	// panic("not implemented") // TODO: Implement
 }
 
 // Read the file
 func (f MemoryFile) Read(p []byte) (n int, err error) {
-	n = copy(p, []byte(f.content.data))
-	return n, io.EOF
+	return f.buffer.Read(p)
 }
 
 func (f MemoryFile) Write(b []byte) (n int, err error) {
-	f.content.data = string(b)
-	f.ch <- true
-	return len(f.content.data), nil
+	f.entry.mu.Lock()
+	defer f.entry.mu.Unlock()
+	f.buffer.Reset()
+	n, err = f.buffer.Write(b)
+	f.entry.content = string(b)
+	for watcher := range f.entry.watchers {
+		watcher <- true
+	}
+	return n, err
 }
 
 // ReadAt a given offset with a file
-func (MemoryFile) ReadAt(p []byte, off int64) (n int, err error) {
+func (f MemoryFile) ReadAt(p []byte, off int64) (n int, err error) {
 	panic("not implemented") // TODO: Implement
 }
 
@@ -71,27 +72,19 @@ func NewMemoryFileSystem() *MemoryFileSystem {
 func (fs MemoryFileSystem) Create(name string) (File, error) {
 	entry, ok := fs.files[name]
 	if !ok {
-		ch := make(chan bool)
+		// ch := make(chan bool)
 
 		fs.files[name] = &MemoryFileEntry{
 			sync.RWMutex{},
-			MemoryFile{
-				&MemoryFileData{},
-				ch,
-			},
+			"",
 			make(map[chan bool]struct{}),
 		}
 		entry = fs.files[name]
-
-		go func() {
-			for range ch {
-				for watcher := range entry.watchers {
-					watcher <- true
-				}
-			}
-		}()
 	}
-	return entry.file, nil
+	return MemoryFile{
+		entry,
+		bytes.NewBufferString(entry.content),
+	}, nil
 }
 
 // Open a file
@@ -100,7 +93,10 @@ func (fs MemoryFileSystem) Open(name string) (File, error) {
 	if !ok {
 		return nil, fmt.Errorf("File not found: %q", name)
 	}
-	return entry.file, nil
+	return MemoryFile{
+		entry,
+		bytes.NewBufferString(entry.content),
+	}, nil
 }
 
 // Stat - Not implemented

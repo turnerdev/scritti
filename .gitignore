@@ -24,3 +24,4 @@ design.md
 .vscode
 /www/*.wasm
 /www/wasm_exec.js
+sampledata

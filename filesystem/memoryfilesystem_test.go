@@ -109,7 +109,7 @@ func TestMemoryFileSystem(t *testing.T) {
 			data, _ := ioutil.ReadAll(file)
 			got := string(data)
 			if want[1] != got {
-				t.Errorf("Want %q got %q", want, got)
+				t.Errorf("Want %q got %q", want[1], got)
 			}
 		}
 
