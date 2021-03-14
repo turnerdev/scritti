@@ -24,12 +24,12 @@ export default (function(){
 
     const initialize = async () => {
         const result = await WebAssembly.instantiateStreaming(
-            fetch(`lib.wasm?${Date.now()}`),
+            fetch(`www/lib.wasm`),
             go.importObject
         )
         go.run(result.instance)
 
-        const data = await fetch("./export.json")
+        const data = await fetch("www/export.json")
         const assets = await data.json()
 
         await Promise.all(assets.map(asset => send('set', {id: asset.id, source: asset.source})))
