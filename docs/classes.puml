@@ -1,0 +1,29 @@
+@startuml
+
+interface FileSystem
+class MemoryFileSystem
+class OSFileSystem
+
+class Store
+
+interface Asset
+
+class Component
+class Style
+class SVG
+
+Asset --* Store
+Store ..> FileSystem: uses
+Component ..|> Asset
+Style ..|> Asset
+SVG ..|> Asset
+
+Style --o Component
+Element --* Component
+Style --o Element
+Style --o SVG
+
+MemoryFileSystem ..|> FileSystem
+OSFileSystem ..|> FileSystem
+
+@enduml

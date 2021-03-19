@@ -1,0 +1,16 @@
+@startuml
+
+[Client] ..> WebSockets
+[Client] ..> WASM
+[WebAssembly] - WASM
+[Server] - WebSockets
+[Server] ..> [Store]
+[Server] ..> [Core]
+[Server] ..> [Renderer]
+[WebAssembly] ..> [Store]
+[WebAssembly] ..> [Core]
+[WebAssembly] ..> [Renderer]
+[Store] ..> [File System]
+[Store] ..> [Core]
+
+@enduml
