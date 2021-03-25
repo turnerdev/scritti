@@ -11,7 +11,7 @@ Demo project with the goal of exploring concurrency in Go. Features:
 
 * Local dev server (WebSockets, JSON RPC)
 * WebAssembly build for client-side parsing
-* Simple in-browser IDE
+* Simple Web Components based in-browser IDE
 
 ### Design
 ![Component Diagram](./docs/components.png)
