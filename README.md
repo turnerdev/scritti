@@ -2,7 +2,7 @@
 
 A small DSL for rapid prototyping with utility-first CSS frameworks. Inspired by the likes of [pug](https://pugjs.org), [haml](https://haml.info/)
 
-Try it live [here!]()
+Try it live [here!](https://turnerdev.github.io/scritti/)
 
 ![test](./docs/screenshot.png)
 
