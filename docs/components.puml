@@ -10,7 +10,7 @@
 [WebAssembly] ..> [Store]
 [WebAssembly] ..> [Core]
 [WebAssembly] ..> [Renderer]
-[Store] ..> [File System]
-[Store] ..> [Core]
+[Store] .right.> [File System]
+[Store] .up.> [Core]
 
 @enduml
